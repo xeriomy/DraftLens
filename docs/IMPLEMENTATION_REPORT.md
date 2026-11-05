@@ -1,58 +1,37 @@
-# Sprint 0 Implementation Report
+# DraftLens — Sprint 0.1 Capture Hardening Report
 
-**Status:** Critical MediaProjection startup fix is on PR #1. No real-device capture claim is made yet.
-The GitHub Actions workflow is the build of record: it runs unit tests, lint, debug APK build,
-uploads the artifact, compiles instrumentation tests, and inspects the debug APK manifest.
+**Branch:** `sprint-0-android-foundation` · **PR:** #1
 
-## Implemented
-- Native Kotlin + Compose project, single module `:app`; repository LICENSE remains MIT.
-- MediaProjection consent flow with screen-capture intent.
-- `CaptureSessionService` promotes itself with `ServiceCompat.startForeground()` and
-  `ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` before `getMediaProjection()`.
-- `CaptureStartupExecutor` keeps the mandatory order in one place: foreground promotion,
-  projection acquisition, projection initialization.
-- Persistent low-priority notification with explicit Stop action.
-- Android 13+ `POST_NOTIFICATIONS` is optional; denial leaves capture available, with in-app
-  status and Stop control.
-- Frame sampler defaults to 2 FPS, clamps to 334–2000 ms / ≤3 FPS, interval persisted in DataStore.
-- ImageReader bounded at 3 images; capture callback acquires latest image, drops when interval
-  not elapsed or capture paused.
-- Latest-frame Compose preview; capture status, resolution, frame count, timestamp, latency,
-  errors, pause/resume.
-- Rotation/resize keeps the existing VirtualDisplay and calls `setSurface()` then `resize()`—
-  no second consent prompt and no extra VirtualDisplay.
-- Teardown releases VirtualDisplay, MediaProjection, ImageReader/Surface, HandlerThread,
-  notification.
-- Detection interfaces return explicit `NotImplemented`; no fake recognition results.
-- Room deferred until first persisted entity; empty database omitted.
+## Physical-device status
+- **Maintainer-reported smoke test: PASS for basic capture and live preview** (Sprint 0 device test, details not supplied).
+- Device model, Android version, frame counts and latency measurements from that run were not provided and are not claimed.
+- Expanded lifecycle matrix (`docs/TESTING_PHYSICAL_DEVICE.md`) remains mostly **NOT RUN** until executed.
 
-## Verification required
-CI checks the JVM suite, lint, APK assembly, instrumentation-test compilation, and the APK's
-merged manifest service type/permissions. CI cannot grant screen-capture consent or prove
-hardware MediaProjection behavior.
+## Verified fixes in this sprint
+- AGP **8.6.1** for API 35 support; Gradle 8.7 and Kotlin 2.0.20 unchanged.
+- Lint is strict (`abortOnError = true`, release checks enabled) and CI gates on it.
+- `CaptureStartupExecutor`: promotion → projection → initialization; failure propagation tested.
+- Foreground promotion occurs before `getMediaProjection()`; consent is fresh each session.
+- One `VirtualDisplay` per `MediaProjection`: rotation keeps it and calls `setSurface()` + `resize()`.
+- `AUTO_MIRROR` replaced `PUBLIC` flag.
+- Capture dimensions prefer `maximumWindowMetrics` on API 30+, with the legacy path retained below it.
+- FrameSampler uses monotonic elapsed time on Android (`SystemClock.elapsedRealtime()`), with an injectable JVM clock for tests.
+- Memory ownership: no recycling while Compose can render a Bitmap; stale frames are unreferenced and GC-reclaimed.
+- Frame timing wall-clock values are kept separate; UI reports frame-processing time only, not detection latency.
+- Consent intent is created at Start time rather than composition time.
 
-**Not verified here:** real-device capture, initial frames, rotation on hardware, consent
-revocation during capture, 10-minute memory stability, OEM restrictions. Run the checklist in
-`CaptureLifecycleInstrumentedTest` on a physical device before release.
+## Regression coverage
+- Startup ordering, promotion failure and projection-acquisition failure.
+- Sampler monotonic behavior, interval clamping/reset and pause/resume reset.
+- Capture-state reset and start-blocking rules.
+- Projection consent-result validation.
+- Detection stubs return `NotImplemented`.
+- Android instrumentation source checks service manifest type/permissions and compiles in CI.
 
-## Tests
-`./gradlew test` and `./gradlew lint` are CI gates. Unit coverage includes capture state
-transitions, sampler clamp/reset, startup-order enforcement and failure propagation, state
-holder reset, projection result acceptance, and detection stubs returning NotImplemented.
-Instrumentation source is compile-checked; device-dependent checks remain for the hardware run.
+## Limits
+- No recognition, OCR, recommendations, overlay, API sync, or hero data.
+- Sprint 0.1 keeps one full-size preview frame only; analysis crop/downscale is future Vision Foundation work.
+- Self-capture: no `FLAG_SECURE`; user can choose “Entire screen” (includes debug UI) or “A single app” in the system scope dialog.
 
-No test can prove consent UI behavior or hardware screen capture from a JVM test.
-
-## Known limitations
-- No ML hero recognition, recommendations, counter/synergy scoring, overlays, API sync, player profiling.
-- Data sources are documented only; Sprint 0 performs zero network calls.
-- MLBBDex and Rone share ranked-stats lineage; definitions are not merged or reinterpreted.
-- Consent is per session and cannot be replayed.
-- OEM/store/policy questions in `docs/PRIVACY.md` remain unresolved; prototype is not shippable.
-
-## Recommended next tasks
-1. Physical-device matrix (Samsung/Google/Xiaomi; rotation, revocation, long session).
-2. Data-source sync prototype with offline Room cache and attribution UI.
-3. Manual draft-log screen and hero-slot crop dataset with separate opt-in.
-4. Lightweight baseline detection research before adding models.
-5. Privacy/store review for overlay and screenshot analysis.
+## Sprint 1 Vision Foundation recommendation
+Start with rotation-aware preprocessing plus slot annotation, then a deterministic hero-ID lookup. Keep capture/Vision interfaces separate so ML evaluation can use the same sanitized frame input. Add the expanded physical-device matrix before store release.

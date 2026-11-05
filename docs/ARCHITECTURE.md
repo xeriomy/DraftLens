@@ -1,7 +1,7 @@
 # Architecture — DraftLens Sprint 0
 
 ## Stack
-Kotlin 2.0.20 · AGP 8.5.2 · compileSdk/targetSdk 35 · minSdk 26 · Jetpack Compose (material3) ·
+Kotlin 2.0.20 · AGP 8.6.1 · Gradle 8.7 · compileSdk/targetSdk 35 · minSdk 26 · Jetpack Compose (material3) ·
 Coroutines + Flow · DataStore Preferences. Single Gradle module `:app`.
 
 ## Package map (Sprint 0 subset; later packages added as milestones justify them)
@@ -26,11 +26,14 @@ has no persisted records or independent feature modules, so empty scaffolding is
 
 ## Data flow
 MediaProjection → VirtualDisplay → ImageReader(maxImages=3) → HandlerThread("draftlens-capture")
-→ FrameSampler(≥interval) → Bitmap (latest-only, previous recycled) → `StateFlow<CapturedFrame>`
+→ FrameSampler(monotonic elapsed time, ≥interval) → Bitmap (latest-only, stale ref cleared on stop/reset) → `StateFlow<CapturedFrame>`
 → ViewModel → Compose preview. Main thread never decodes pixels; UI stays responsive.
 
 ## Key decisions
-- Latest-frame-only slot: OOM-safe on 4K displays; stale frames are worthless for draft detection.
-- Service foregrounds before `getMediaProjection()` (Android 14+ requirement).
-- Consent re-requested every session — Android requires it per capture; never cached.
+- Latest-frame-only slot because stale frames are worthless for draft detection.
+- Service foregrounds before `getMediaProjection()`.
+- Consent re-requested and token used once per session—never cached.
+- Capture dimensions prefer `maximumWindowMetrics` on API 30+; legacy fallback is retained below that.
+- Bitmaps are never recycled while Compose may still render them; stopping/resetting clears the state reference.
+- Self-capture: no `FLAG_SECURE`; users see system scope options to choose “Entire screen” (debug UI included) or “A single app”.
 - No network code in Sprint 0. Data-source audit is documentation-only (`docs/DATA_SOURCES.md`).

@@ -14,6 +14,8 @@ with `ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` → `getMediaProject
   `MediaProjection.Callback.onStop()` (revocation) and `onCapturedContentResize()` (rotation)
   are both handled. Rotation keeps the existing VirtualDisplay and calls `setSurface()` then
   `resize()` with the replacement `ImageReader` surface—no second consent prompt.
+- **Capture dimensions:** API 30+ uses `WindowManager.maximumWindowMetrics`; lower APIs retain
+  the legacy `defaultDisplay.getSize()` path.
 - **Android 12+**: partial screen capture (share one app) is possible in the system dialog;
   DraftLens requests full-screen capture; behavior is identical when partial is chosen.
 - **minSdk 26**: `ImageReader`, `VirtualDisplay`, and foreground-service APIs used are all

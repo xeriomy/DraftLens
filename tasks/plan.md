@@ -1,5 +1,23 @@
 # Implementation Plan: DraftLens Sprint 0 — Android Foundation & Live Capture PoC
 
+## Sprint 0.1 — Capture Hardening & Technical Cleanup
+**Objective:** Harden the reported-working capture path before Vision Engine. No recognition,
+recommendations, overlays, or architecture rewrites.
+
+### Work items in order
+- [x] Task 1: AGP 8.5.2 → 8.6.1; keep Gradle 8.7, Kotlin 2.0.20; run test/lint/assembleAndroidTest
+- [x] Task 2: Strict lint: remove silent `abortOnError=false` / release checks; fail CI on lint errors
+- [x] Task 3: Frame memory ownership: no unsafe Bitmap recycling; latest-only ownership; stale refs cleared
+- [x] Task 4: Frame timing: monotonic/Android elapsed-realtime sampler; wall-clock retained separately; latency semantics clarified; tests
+- [x] Task 5: MediaProjection: one VirtualDisplay per projection, API-appropriate resize path, WindowMetrics/appropriate fallback, minimum display flags
+- [x] Task 6: Physical-device lifecycle matrix document; mark results explicitly pending until executed
+- [x] Task 7: Docs updated: IMPLEMENTATION_REPORT, SCREEN_CAPTURE, ARCHITECTURE
+- [x] Task 8: CI green: test, lint, assembleAndroidTest, assembleDebug, APK manifest check
+
+### Sprint 0.1 verification
+Gradle: `test`, `lint`, `assembleAndroidTest`, `assembleDebug`. Physical device matrix is pending and is not claimed here.
+Manual smoke test already performed by maintainer and is recorded as such.
+
 ## Overview
 Single-module native Android app (Kotlin + Compose, MVVM, Coroutines/Flow) that validates
 MediaProjection screen capture in a foreground service and shows a live debug preview.
