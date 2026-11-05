@@ -2,11 +2,11 @@
 
 Status values: **PASS**, **FAIL**, **PARTIAL**, **NOT RUN**. Record the commit SHA, APK artifact run ID, device model and Android version for each execution. Do not mark a row PASS without evidence from that run.
 
-> Maintainer-reported baseline: Sprint 0 capture and preview were smoke-tested on a physical Android device and confirmed working. Device details, versions, frame counts and latency measurements from that test were not provided, so they are not recorded here. All expanded lifecycle rows below remain **NOT RUN**.
+> Maintainer-reported baseline: Sprint 0 capture and preview were smoke-tested on a physical Android device and confirmed working. Device details, versions, frame counts and latency measurements from that test were not provided, so they are not recorded here. First capture is **PARTIAL** on that evidence; all expanded lifecycle rows below remain **NOT RUN**.
 
 | # | Scenario | Expected behavior | Status |
 |---:|---|---|---|
-| 1 | First capture from a cold launch | Consent appears, foreground service starts, preview shows frames | NOT RUN (smoke result reported by maintainer; no details recorded) |
+| 1 | First capture from a cold launch | Consent appears, foreground service starts, preview shows frames | PARTIAL (maintainer-reported basic smoke: capture + live preview confirmed working; device/version/timings not supplied) |
 | 2 | Stop, then fresh second session | New consent dialog; new MediaProjection; no stale frame count | NOT RUN |
 | 3 | 10 start/stop cycles | No duplicate notification, no parallel session, no repeated service error | NOT RUN |
 | 4 | Stop via Android media-projection system controls | Callback cleanup; IDLE state; service stopped | NOT RUN |

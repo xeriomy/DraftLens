@@ -11,16 +11,75 @@ class CaptureStateHolderTest {
         CaptureStateHolder.reset()
     }
 
+    private fun capturedFrameNullBitmap() =
+        com.draftlens.models.CapturedFrame(
+            bitmap = null,
+            sampledAtElapsedRealtimeMs = 10_000,
+            wallClockTimestampMs = System.currentTimeMillis(),
+            processingLatencyMs = 12,
+            width = 1080,
+            height = 2400
+        )
+
+    @Test fun `task removal style cleanup clears frame and session metadata while preserving Error`() {
+        CaptureStateHolder.setStatus(CaptureStatus.AWAITING_PERMISSION)
+        CaptureStateHolder.setStatus(CaptureStatus.STARTING)
+        CaptureStateHolder.beginCapture(1080, 2400, 440)
+        CaptureStateHolder.recordFrame(capturedFrameNullBitmap())
+        CaptureStateHolder.setStatus(CaptureStatus.ERROR, "terminated externally")
+
+        CaptureStateHolder.clearLatestFrame()
+        CaptureStateHolder.resetSessionMetrics()
+        if (CaptureStateHolder.state.value.status != CaptureStatus.ERROR) {
+            CaptureStateHolder.setStatus(CaptureStatus.IDLE)
+        }
+
+        val state = CaptureStateHolder.state.value
+        assertNull(CaptureStateHolder.latestFrame.value)
+        assertEquals(CaptureStatus.ERROR, state.status)
+        assertEquals("terminated externally", state.lastError)
+        assertEquals(0L, state.frameCount)
+        assertEquals(0, state.displayWidth)
+        assertEquals(0, state.displayHeight)
+        assertEquals(0, state.densityDpi)
+        assertNull(state.lastFrameWallClockMs)
+        assertNull(state.startedAtMs)
+    }
+
     @Test fun `revoked capture clears stale frame and preserves error`() {
         CaptureStateHolder.setStatus(CaptureStatus.AWAITING_PERMISSION)
         CaptureStateHolder.setStatus(CaptureStatus.STARTING)
         CaptureStateHolder.beginCapture(1080, 2400, 440)
-        CaptureStateHolder.clearLatestFrame()
+        CaptureStateHolder.recordFrame(
+            com.draftlens.models.CapturedFrame(
+                bitmap = null,
+                sampledAtElapsedRealtimeMs = 10_000,
+                wallClockTimestampMs = System.currentTimeMillis(),
+                processingLatencyMs = 12,
+                width = 1080,
+                height = 2400
+            )
+        )
+        assertNotNull(CaptureStateHolder.latestFrame.value)
+
         CaptureStateHolder.setStatus(CaptureStatus.ERROR, "consent revoked")
+        CaptureStateHolder.clearLatestFrame()
 
         assertNull(CaptureStateHolder.latestFrame.value)
         assertEquals(CaptureStatus.ERROR, CaptureStateHolder.state.value.status)
         assertEquals("consent revoked", CaptureStateHolder.state.value.lastError)
+    }
+
+    @Test fun `repeated cleanup is idempotent and preserves error`() {
+        CaptureStateHolder.setStatus(CaptureStatus.ERROR, "cleanup proof")
+        CaptureStateHolder.clearLatestFrame()
+        CaptureStateHolder.resetSessionMetrics()
+        CaptureStateHolder.clearLatestFrame()
+        CaptureStateHolder.resetSessionMetrics()
+
+        assertNull(CaptureStateHolder.latestFrame.value)
+        assertEquals(CaptureStatus.ERROR, CaptureStateHolder.state.value.status)
+        assertEquals("cleanup proof", CaptureStateHolder.state.value.lastError)
     }
 
     @Test fun `clearing frame does not reset metrics or state`() {

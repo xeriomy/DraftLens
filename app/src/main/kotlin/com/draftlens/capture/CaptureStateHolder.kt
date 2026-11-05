@@ -84,6 +84,9 @@ object CaptureStateHolder {
     fun resetSessionMetrics() {
         _state.update {
             it.copy(
+                displayWidth = 0,
+                displayHeight = 0,
+                densityDpi = 0,
                 frameCount = 0,
                 lastFrameWallClockMs = null,
                 lastFrameProcessingLatencyMs = null,

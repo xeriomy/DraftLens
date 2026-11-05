@@ -11,7 +11,7 @@ import android.graphics.Bitmap
  * - Stopping/resetting clears the reference; native memory is released by GC.
  */
 data class CapturedFrame(
-    val bitmap: Bitmap,
+    val bitmap: Bitmap?,
     val sampledAtElapsedRealtimeMs: Long,
     val wallClockTimestampMs: Long,
     /** Time from image acquisition to Bitmap creation. Not detection latency. */

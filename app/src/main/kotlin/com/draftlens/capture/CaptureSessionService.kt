@@ -296,6 +296,15 @@ class CaptureSessionService : Service() {
         stopSelf()
     }
 
+    private fun cleanupAfterTermination() {
+        CaptureStateHolder.clearLatestFrame()
+        CaptureStateHolder.resetSessionMetrics()
+        if (CaptureStateHolder.state.value.status != CaptureStatus.ERROR) {
+            CaptureStateHolder.setStatus(CaptureStatus.IDLE)
+        }
+        releaseCaptureResources(releaseForeground = true)
+    }
+
     private fun releaseCaptureResources(releaseForeground: Boolean) {
         captureJob?.cancel()
         captureJob = null
@@ -335,19 +344,13 @@ class CaptureSessionService : Service() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         // MediaProjection tokens cannot survive process death. Do not recreate them from a null intent.
         Log.i(TAG, "Activity task removed; capture session will not be restarted with stale consent")
-        releaseCaptureResources(releaseForeground = true)
-        if (CaptureStateHolder.state.value.status != CaptureStatus.ERROR) {
-            CaptureStateHolder.setStatus(CaptureStatus.IDLE)
-        }
+        cleanupAfterTermination()
         stopSelf()
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
-        releaseCaptureResources(releaseForeground = true)
-        if (CaptureStateHolder.state.value.status != CaptureStatus.ERROR) {
-            CaptureStateHolder.setStatus(CaptureStatus.IDLE)
-        }
+        cleanupAfterTermination()
         super.onDestroy()
     }
 

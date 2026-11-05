@@ -142,9 +142,10 @@ fun DebugCaptureScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     frame?.let { f ->
-                        if (!f.bitmap.isRecycled) {
+                        val bitmap = f.bitmap
+                        if (bitmap != null && !bitmap.isRecycled) {
                             Image(
-                                bitmap = f.bitmap.asImageBitmap(),
+                                bitmap = bitmap.asImageBitmap(),
                                 contentDescription = "Latest captured frame",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Fit
