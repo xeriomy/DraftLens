@@ -15,6 +15,7 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
@@ -40,7 +41,10 @@ import java.util.Calendar
 class CaptureSessionService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val sampler = FrameSampler(FrameSampler.DEFAULT_INTERVAL_MS)
+    private val sampler = FrameSampler(
+        FrameSampler.DEFAULT_INTERVAL_MS,
+        timeSource = { SystemClock.elapsedRealtime() }
+    )
     private val startupExecutor = CaptureStartupExecutor<MediaProjection>()
     private lateinit var pipeline: FramePipeline
 
@@ -59,7 +63,7 @@ class CaptureSessionService : Service() {
         }
 
         override fun onCapturedContentResize(width: Int, height: Int) {
-            recreateDisplay(width, height, resources.displayMetrics.densityDpi)
+            recreateDisplay(width, height, resources.configuration.densityDpi)
         }
     }
 
@@ -151,14 +155,12 @@ class CaptureSessionService : Service() {
                         proj.registerCallback(projectionCallback, null)
 
                         val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                        val size = Point()
-                        @Suppress("DEPRECATION")
-                        wm.defaultDisplay.getSize(size)
-                        val dpi = resources.displayMetrics.densityDpi
+                        val (captureWidth, captureHeight) = captureDimensions(wm)
+                        val dpi = resources.configuration.densityDpi
 
-                        pipeline.start(size.x, size.y, dpi)
-                        createVirtualDisplay(proj, size.x, size.y, dpi)
-                        CaptureStateHolder.beginCapture(size.x, size.y, dpi)
+                        pipeline.start(captureWidth, captureHeight, dpi)
+                        createVirtualDisplay(proj, captureWidth, captureHeight, dpi)
+                        CaptureStateHolder.beginCapture(captureWidth, captureHeight, dpi)
                         collectFrames()
                     }
                 )
@@ -174,6 +176,17 @@ class CaptureSessionService : Service() {
                 stopSelf()
             }
         }
+    }
+
+    private fun captureDimensions(wm: WindowManager): Pair<Int, Int> {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = wm.maximumWindowMetrics.bounds
+            return bounds.width() to bounds.height()
+        }
+        val point = Point()
+        @Suppress("DEPRECATION")
+        wm.defaultDisplay.getSize(point)
+        return point.x to point.y
     }
 
     private fun promoteToForegroundMediaProjection(): Boolean {
@@ -233,7 +246,7 @@ class CaptureSessionService : Service() {
             width,
             height,
             densityDpi,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             surface,
             null,
             null

@@ -13,8 +13,9 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * Owns ImageReader → PixelCopy/Bitmap → StateFlow.
  * - maxImages capped at 3; oldest frame dropped on backpressure (no blocking).
- * - Only the latest Bitmap is retained by the pipeline; previous snapshots are dropped for GC.
- * - All work off the main thread (dedicated HandlerThread + Channel-like drop).
+ * - Only the latest Bitmap is published; stale references are cleared on stop/reset.
+ * - Bitmaps are not recycled while Compose may still be rendering them; GC reclaims them.
+ * - All work off the main thread (dedicated HandlerThread + drop-when-late).
  */
 class FramePipeline(
     private val sampler: FrameSampler,
@@ -46,17 +47,25 @@ class FramePipeline(
                     null
                 }
                 if (image == null) return@setOnImageAvailableListener
-                val startedAt = System.currentTimeMillis()
+                val wallStartedAtMs = System.currentTimeMillis()
                 try {
                     if (!isActive()) return@setOnImageAvailableListener
-                    if (sampler.shouldEmit(startedAt)) {
+                    val sampledAtMs = sampler.currentTimeMs()
+                    if (sampler.shouldEmit(sampledAtMs)) {
                         // Reference image only to avoid leaks; copy pixels via Image plane.
                         // Sprint 0 keeps this synchronous and in-memory; no disk, no upload.
                         val bitmap = imageToBitmap(image, width, height)
                         if (bitmap != null) {
-                            sampler.markEmitted(startedAt)
-                            val latency = System.currentTimeMillis() - startedAt
-                            _latestFrame.value = CapturedFrame(bitmap, startedAt, latency, width, height)
+                            sampler.markEmitted(sampledAtMs)
+                            val processingLatencyMs = System.currentTimeMillis() - wallStartedAtMs
+                            _latestFrame.value = CapturedFrame(
+                                bitmap,
+                                sampledAtElapsedRealtimeMs = sampledAtMs,
+                                wallClockTimestampMs = System.currentTimeMillis(),
+                                processingLatencyMs = processingLatencyMs,
+                                width = width,
+                                height = height
+                            )
                         }
                     }
                 } catch (e: Exception) {
@@ -94,9 +103,6 @@ class FramePipeline(
 
     fun stop() {
         stopInternal(release = true)
-        _latestFrame.value?.let { frame ->
-            if (!frame.bitmap.isRecycled) frame.bitmap.recycle()
-        }
         _latestFrame.value = null
     }
 

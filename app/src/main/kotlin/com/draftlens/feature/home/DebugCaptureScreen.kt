@@ -26,7 +26,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -48,10 +47,6 @@ fun DebugCaptureScreen(
     val perm by vm.permissionStatus.collectAsState()
     val interval by vm.intervalMs.collectAsState()
 
-    val consentIntent = remember {
-        com.draftlens.permissions.ProjectionPermission.createScreenCaptureIntent(activity)
-    }
-
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -65,7 +60,7 @@ fun DebugCaptureScreen(
 
     val requestStartCapture = {
         vm.onPermissionRequested()
-        launcher.launch(consentIntent)
+        launcher.launch(com.draftlens.permissions.ProjectionPermission.createScreenCaptureIntent(activity))
     }
 
     Column(
@@ -86,8 +81,8 @@ fun DebugCaptureScreen(
                 Text("Permission: $perm")
                 Text("Resolution: ${state.displayWidth} × ${state.displayHeight} @ ${state.densityDpi} dpi")
                 Text("Frames: ${state.frameCount}")
-                Text("Last frame: ${state.lastFrameTimestampMs?.let { java.text.SimpleDateFormat("HH:mm:ss.SSS").format(it) } ?: "—"}")
-                Text("Latency: ${state.lastLatencyMs?.let { "$it ms" } ?: "—"}")
+                Text("Last frame: ${state.lastFrameWallClockMs?.let { java.text.SimpleDateFormat("HH:mm:ss.SSS").format(it) } ?: "—"}")
+                Text("Frame processing: ${state.lastFrameProcessingLatencyMs?.let { "$it ms" } ?: "—"}  (acquisition → Bitmap, not detection)")
                 state.lastError?.let { Text("Error: $it", color = Color.Red) }
             }
         }

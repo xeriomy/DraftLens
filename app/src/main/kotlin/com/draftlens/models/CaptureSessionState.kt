@@ -11,8 +11,9 @@ data class CaptureSessionState(
     val displayHeight: Int = 0,
     val densityDpi: Int = 0,
     val frameCount: Long = 0,
-    val lastFrameTimestampMs: Long? = null,
-    val lastLatencyMs: Long? = null,
+    val lastFrameWallClockMs: Long? = null,
+    /** Time from image acquisition to Bitmap creation, in ms. Not detection latency. */
+    val lastFrameProcessingLatencyMs: Long? = null,
     val isPaused: Boolean = false,
     val lastError: String? = null,
     val startedAtMs: Long? = null,

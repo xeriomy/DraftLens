@@ -49,7 +49,7 @@ class CaptureStateHolderTest {
         val state = CaptureStateHolder.state.value
         assertEquals(CaptureStatus.IDLE, state.status)
         assertEquals(0L, state.frameCount)
-        assertNull(state.lastFrameTimestampMs)
+        assertNull(state.lastFrameWallClockMs)
         assertNull(CaptureStateHolder.latestFrame.value)
     }
 }

@@ -58,8 +58,8 @@ object CaptureStateHolder {
         _state.update {
             it.copy(
                 frameCount = it.frameCount + 1,
-                lastFrameTimestampMs = frame.timestampMs,
-                lastLatencyMs = frame.latencyMs,
+                lastFrameWallClockMs = frame.wallClockTimestampMs,
+                lastFrameProcessingLatencyMs = frame.processingLatencyMs,
                 displayWidth = frame.width,
                 displayHeight = frame.height
             )
@@ -76,7 +76,6 @@ object CaptureStateHolder {
     }
 
     fun reset() {
-        _latestFrame.value?.bitmap?.takeUnless { it.isRecycled }?.recycle()
         _latestFrame.value = null
         _state.value = CaptureSessionState()
     }
