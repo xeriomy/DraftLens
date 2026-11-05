@@ -2,7 +2,7 @@
 
 ## Stack
 Kotlin 2.0.20 · AGP 8.5.2 · compileSdk/targetSdk 35 · minSdk 26 · Jetpack Compose (material3) ·
-Coroutines + Flow · Room (scaffolding) · DataStore Preferences. Single Gradle module `:app`.
+Coroutines + Flow · DataStore Preferences. Single Gradle module `:app`.
 
 ## Package map (Sprint 0 subset; later packages added as milestones justify them)
 ```
@@ -11,14 +11,13 @@ com.draftlens
   capture/        CaptureSessionService (foreground), CaptureController, FramePipeline, FrameSampler
   models/         CaptureSessionState + CaptureTransitions, CapturedFrame
   permissions/    ProjectionPermission (consent intent factory)
-  database/       DraftLensDatabase (no entities in Sprint 0)
   datastore/      AppPreferencesRepository (sampling interval)
   detection/      Interfaces only — ScreenCaptureProvider, FrameProcessor, DraftPhaseDetector,
                   HeroRecognizer, HeroSlotDetector, DetectionValidator (all NotImplemented)
   feature/home/   HomeViewModel, DebugCaptureScreen
 ```
-`common/`, `preprocessing/`, `validation/`, `settings/`, `testing/` from the brief are **not**
-created yet — Sprint 0 has no code that needs them (see ADR-001 module-split trigger).
+Room and the remaining abstract packages are **not** created yet — Sprint 0
+has no persisted records or independent feature modules, so empty scaffolding is omitted.
 
 ## State machine
 `IDLE → AWAITING_PERMISSION → STARTING → CAPTURING ⇄ PAUSED → STOPPING → IDLE`, any → `ERROR → IDLE`.

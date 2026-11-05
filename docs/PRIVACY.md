@@ -8,7 +8,7 @@
 - Frames live **in memory only** (single latest `Bitmap` slot). Zero files written, zero
   uploads, zero network calls in the Sprint 0 build (no HTTP client dependency exists).
 - Preferences (sampling interval, last-capture timestamp) stay in on-device DataStore.
-  Room ships empty (no entities); backups exclude the DB and DataStore (`backup_rules.xml`).
+  No local database exists in Sprint 0; backups exclude DataStore (`backup_rules.xml`).
 - Any future dataset collection (saving frames for ML) requires a **separate explicit opt-in**
   that does not exist yet — it is not implied by granting capture consent.
 

@@ -23,7 +23,7 @@ app. The `capture/`, `detection/`, `database/`, `datastore/` packages are alread
 to make that move mechanical.
 
 ## Consequences
-- `Room` + `DataStore` are scaffolding only (empty DB, one preference) — deleting them costs
-  one file each if never needed.
+- `DataStore` is used for preferences now; `Room` is deferred until the first persisted entity
+  to avoid an empty database and dead code.
 - All detection interfaces return explicit `NotImplemented`; adding a real model later means
   writing *one* new implementation per interface, not restructuring.

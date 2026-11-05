@@ -23,15 +23,15 @@ grow without re-architecture.
   Rotation/resize recreates VirtualDisplay via `onCapturedContentResize` + config-change.
 - Domain seams (explicit NotImplemented, never fake data): ScreenCaptureProvider,
   FrameProcessor, DraftPhaseDetector, HeroRecognizer, HeroSlotDetector, DetectionValidator.
-- Data sources: Gradle dependencies only for lifecycle/compose/coroutines/room/datastore.
-  Room + DataStore scaffolding present (DB class with no entities yet; preferences repository
-  with `samplingIntervalMs`, `captureConsentShown`). No network client in Sprint 0 —
+- Data sources: Gradle dependencies for lifecycle/compose/coroutines/datastore. Room
+  ships with first persisted entity to avoid empty database. Preferences repository has
+  `samplingIntervalMs`. No network client in Sprint 0 —
   DATA_SOURCES.md records audit; API sync deferred to later milestone per scope rules.
 
 ## Task List
 ### Phase 1: Foundation
 - [x] Task 1: Scaffold Gradle project, manifest, nav (single landing screen), CI workflow
-- [x] Task 2: Core models + DataStore preferences repository
+- [x] Task 2: Core models + DataStore preferences repository (Room deferred)
 - [x] Task 3: Capture state machine + unit tests (TDD, red first)
 
 ### Phase 2: Capture pipeline
