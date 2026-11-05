@@ -30,6 +30,8 @@ object CaptureStateHolder {
     }
 
     fun beginCapture(width: Int, height: Int, densityDpi: Int) {
+        clearLatestFrame()
+        resetSessionMetrics()
         _state.update { current ->
             val base = if (CaptureTransitions.canTransition(current.status, CaptureStatus.CAPTURING)) {
                 CaptureTransitions.transition(current, CaptureStatus.CAPTURING)
@@ -85,7 +87,6 @@ object CaptureStateHolder {
                 frameCount = 0,
                 lastFrameWallClockMs = null,
                 lastFrameProcessingLatencyMs = null,
-                lastError = null,
                 startedAtMs = null,
                 isPaused = false
             )
