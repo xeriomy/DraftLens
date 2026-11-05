@@ -57,10 +57,7 @@ class CaptureSessionService : Service() {
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
             Log.i(TAG, "MediaProjection onStop received; session ended")
-            CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Screen capture stopped by system")
-            CaptureStateHolder.clearLatestFrame()
-            releaseCaptureResources(releaseForeground = true)
-            stopSelf()
+            terminateCaptureWithError("Screen capture stopped by system")
         }
 
         override fun onCapturedContentResize(width: Int, height: Int) {
@@ -114,7 +111,7 @@ class CaptureSessionService : Service() {
                 START_NOT_STICKY
             }
             ACTION_STOP -> {
-                releaseCaptureResources(releaseForeground = true)
+                cleanupAfterTermination()
                 CaptureStateHolder.reset()
                 stopSelf()
                 START_NOT_STICKY
@@ -171,16 +168,10 @@ class CaptureSessionService : Service() {
                 )
             } catch (e: SecurityException) {
                 Log.e(TAG, "Capture session failed before or during projection setup", e)
-                CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Permission denied: ${e.message}")
-                CaptureStateHolder.clearLatestFrame()
-                releaseCaptureResources(releaseForeground = true)
-                stopSelf()
+                terminateCaptureWithError("Permission denied: ${e.message}")
             } catch (e: Exception) {
                 Log.e(TAG, "Capture session startup failed", e)
-                CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Failed to start capture: ${e.message}")
-                CaptureStateHolder.clearLatestFrame()
-                releaseCaptureResources(releaseForeground = true)
-                stopSelf()
+                terminateCaptureWithError("Failed to start capture: ${e.message}")
             }
         }
     }
@@ -288,12 +279,17 @@ class CaptureSessionService : Service() {
         }
     }
 
+    private fun terminateCaptureWithError(errorMessage: String) {
+        if (CaptureStateHolder.state.value.status != CaptureStatus.ERROR) {
+            CaptureStateHolder.setStatus(CaptureStatus.ERROR, errorMessage)
+        }
+        cleanupAfterTermination()
+        stopSelf()
+    }
+
     private fun failProjectionSession(message: String, error: Exception?) {
         Log.e(TAG, message, error)
-        CaptureStateHolder.setStatus(CaptureStatus.ERROR, error?.let { "$message: ${it.message}" } ?: message)
-        CaptureStateHolder.clearLatestFrame()
-        releaseCaptureResources(releaseForeground = true)
-        stopSelf()
+        terminateCaptureWithError(error?.let { "$message: ${it.message}" } ?: message)
     }
 
     private fun cleanupAfterTermination() {

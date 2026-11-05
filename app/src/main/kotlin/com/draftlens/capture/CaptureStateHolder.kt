@@ -11,6 +11,11 @@ import kotlinx.coroutines.flow.update
 /**
  * In-process bridge between [CaptureSessionService] and UI.
  * Static process memory is intentional: no cross-process persistence, and process death clears it.
+ *
+ * State cleanup APIs are intentionally separate:
+ * - [clearLatestFrame]: removes the latest-frame reference only.
+ * - [resetSessionMetrics]: clears counters, timing, dimensions and permission metadata only.
+ * - [reset]: replaces the whole session state with a fresh idle state.
  */
 object CaptureStateHolder {
     private val _state = MutableStateFlow(CaptureSessionState())
@@ -81,9 +86,14 @@ object CaptureStateHolder {
         _latestFrame.value = null
     }
 
+    /**
+     * Clears session counters, timings, dimensions and permission metadata.
+     * Deliberately preserves status and lastError; use [reset] for a full idle reset.
+     */
     fun resetSessionMetrics() {
         _state.update {
             it.copy(
+                hasPermission = false,
                 displayWidth = 0,
                 displayHeight = 0,
                 densityDpi = 0,
@@ -96,6 +106,7 @@ object CaptureStateHolder {
         }
     }
 
+    /** Full state reset to a fresh idle state. */
     fun reset() {
         clearLatestFrame()
         _state.value = CaptureSessionState()

@@ -11,6 +11,34 @@ class CaptureStateHolderTest {
         CaptureStateHolder.reset()
     }
 
+    @Test fun `termination without error returns to IDLE and clears permission`() {
+        CaptureStateHolder.setStatus(CaptureStatus.AWAITING_PERMISSION)
+        CaptureStateHolder.setStatus(CaptureStatus.STARTING)
+        CaptureStateHolder.beginCapture(1080, 2400, 440)
+        CaptureStateHolder.recordFrame(capturedFrameNullBitmap())
+
+        // Same state operations as CaptureSessionService.cleanupAfterTermination().
+        CaptureStateHolder.clearLatestFrame()
+        CaptureStateHolder.resetSessionMetrics()
+        if (CaptureStateHolder.state.value.status != CaptureStatus.ERROR) {
+            CaptureStateHolder.setStatus(CaptureStatus.IDLE)
+        }
+
+        val state = CaptureStateHolder.state.value
+        assertEquals(CaptureStatus.IDLE, state.status)
+        assertNull(CaptureStateHolder.latestFrame.value)
+        assertFalse(state.hasPermission)
+    }
+
+    @Test fun `resetSessionMetrics clears permission metadata while preserving Error`() {
+        CaptureStateHolder.setStatus(CaptureStatus.ERROR, "permission cleanup")
+        CaptureStateHolder.resetSessionMetrics()
+
+        val state = CaptureStateHolder.state.value
+        assertEquals(CaptureStatus.ERROR, state.status)
+        assertFalse(state.hasPermission)
+    }
+
     private fun capturedFrameNullBitmap() =
         com.draftlens.models.CapturedFrame(
             bitmap = null,
