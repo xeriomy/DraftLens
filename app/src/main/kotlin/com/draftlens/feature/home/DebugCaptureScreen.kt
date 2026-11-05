@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
@@ -127,7 +128,7 @@ fun DebugCaptureScreen(
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            containerColor = Color(0xFF181D26)
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF181D26))
         ) {
             Column(
                 modifier = Modifier.padding(12.dp),
