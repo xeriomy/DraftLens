@@ -1,31 +1,45 @@
 # Sprint 0 Implementation Report
 
-**Result:** Sprint 0 implementation complete at PR #1 / head `6244637` (implementation commit `da25b04`).
-GitHub Actions run [42031536957](https://github.com/xeriomy/DraftLens/actions/runs/42031536957) completed successfully.
+**Status:** Critical MediaProjection startup fix is on PR #1. No real-device capture claim is made yet.
+The GitHub Actions workflow is the build of record: it runs unit tests, lint, debug APK build,
+uploads the artifact, compiles instrumentation tests, and inspects the debug APK manifest.
 
 ## Implemented
 - Native Kotlin + Compose project, single module `:app`; repository LICENSE remains MIT.
 - MediaProjection consent flow with screen-capture intent.
-- Foreground service type `mediaProjection`; foregrounding happens before `getMediaProjection()`.
+- `CaptureSessionService` promotes itself with `ServiceCompat.startForeground()` and
+  `ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` before `getMediaProjection()`.
+- `CaptureStartupExecutor` keeps the mandatory order in one place: foreground promotion,
+  projection acquisition, projection initialization.
 - Persistent low-priority notification with explicit Stop action.
-- Android 13+ `POST_NOTIFICATIONS` is optional; denial leaves capture available, with in-app status and Stop control.
+- Android 13+ `POST_NOTIFICATIONS` is optional; denial leaves capture available, with in-app
+  status and Stop control.
 - Frame sampler defaults to 2 FPS, clamps to 334–2000 ms / ≤3 FPS, interval persisted in DataStore.
-- ImageReader bounded at 3 images; capture callback acquires latest image, drops when interval not elapsed or capture paused.
-- Latest-frame Compose preview; capture status, resolution, frame count, timestamp, latency, errors, pause/resume.
-- Rotation/resize callback recreates the VirtualDisplay without a new consent prompt.
-- Teardown releases VirtualDisplay, MediaProjection, ImageReader/Surface, HandlerThread, notification.
+- ImageReader bounded at 3 images; capture callback acquires latest image, drops when interval
+  not elapsed or capture paused.
+- Latest-frame Compose preview; capture status, resolution, frame count, timestamp, latency,
+  errors, pause/resume.
+- Rotation/resize keeps the existing VirtualDisplay and calls `setSurface()` then `resize()`—
+  no second consent prompt and no extra VirtualDisplay.
+- Teardown releases VirtualDisplay, MediaProjection, ImageReader/Surface, HandlerThread,
+  notification.
 - Detection interfaces return explicit `NotImplemented`; no fake recognition results.
 - Room deferred until first persisted entity; empty database omitted.
 
-## Verification actually executed
-CI steps green: checkout, JDK setup, SDK install, unit tests, lint, debug APK build, artifact upload, manifest service check.
+## Verification required
+CI checks the JVM suite, lint, APK assembly, instrumentation-test compilation, and the APK's
+merged manifest service type/permissions. CI cannot grant screen-capture consent or prove
+hardware MediaProjection behavior.
 
-Artifact `draftlens-debug` downloaded locally from the run. `app-debug.apk` is 10,184,327 bytes; ZIP contains `AndroidManifest.xml` and `classes.dex`.
+**Not verified here:** real-device capture, initial frames, rotation on hardware, consent
+revocation during capture, 10-minute memory stability, OEM restrictions. Run the checklist in
+`CaptureLifecycleInstrumentedTest` on a physical device before release.
 
-**Not verified:** MediaProjection behavior on a physical device, rotation on a real display, revoked consent during capture, 10-minute memory stability, OEM restrictions. The instrumentation plan in `app/src/androidTest/kotlin/...` is not run by CI and must be executed on a device.
-
-## Tests executed by CI
-`./gradlew test` passed. Unit coverage includes capture state transitions, sampler clamp/reset, state holder reset/start/pause/resume, projection result acceptance, detection stubs returning NotImplemented. `./gradlew lint` passed.
+## Tests
+`./gradlew test` and `./gradlew lint` are CI gates. Unit coverage includes capture state
+transitions, sampler clamp/reset, startup-order enforcement and failure propagation, state
+holder reset, projection result acceptance, and detection stubs returning NotImplemented.
+Instrumentation source is compile-checked; device-dependent checks remain for the hardware run.
 
 No test can prove consent UI behavior or hardware screen capture from a JVM test.
 
