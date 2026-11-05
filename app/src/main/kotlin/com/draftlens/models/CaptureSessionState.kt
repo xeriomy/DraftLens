@@ -19,6 +19,7 @@ data class CaptureSessionState(
     val detectionStatus: String = "Not implemented in Sprint 0"
 ) {
     val isCapturing: Boolean get() = status == CaptureStatus.CAPTURING || status == CaptureStatus.PAUSED
+    val isStartBlocking: Boolean get() = status != CaptureStatus.IDLE && status != CaptureStatus.ERROR
 }
 
 enum class CaptureStatus {

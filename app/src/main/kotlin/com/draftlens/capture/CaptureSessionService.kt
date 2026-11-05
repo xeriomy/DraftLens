@@ -15,8 +15,10 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import com.draftlens.MainActivity
 import com.draftlens.R
 import com.draftlens.models.CaptureStatus
@@ -31,14 +33,15 @@ import java.util.Calendar
 /**
  * Owns MediaProjection + VirtualDisplay + FramePipeline.
  * Contract:
- *  - Service foregrounds itself before getMediaProjection() (Android 14+).
- *  - Consent is only accepted through a result issued after an Activity consent dialog.
- *  - Resources are released on user stop, process death, or projection revocation.
+ *  1. Activity obtains consent only after the user grants the system dialog.
+ *  2. This service promotes itself to a typed foreground service before getMediaProjection().
+ *  3. Resources are released on user stop, process death, or projection revocation.
  */
 class CaptureSessionService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val sampler = FrameSampler(FrameSampler.DEFAULT_INTERVAL_MS)
+    private val startupExecutor = CaptureStartupExecutor<MediaProjection>()
     private lateinit var pipeline: FramePipeline
 
     private var projection: MediaProjection? = null
@@ -48,8 +51,10 @@ class CaptureSessionService : Service() {
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
+            Log.i(TAG, "MediaProjection onStop received; session ended")
             CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Screen capture stopped by system")
-            teardown()
+            releaseCaptureResources(releaseForeground = true)
+            stopSelf()
         }
 
         override fun onCapturedContentResize(width: Int, height: Int) {
@@ -70,6 +75,11 @@ class CaptureSessionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         return when (intent?.action) {
             ACTION_START -> {
+                if (CaptureStateHolder.state.value.isStartBlocking) {
+                    Log.i(TAG, "Ignoring duplicate START while capture session is ${CaptureStateHolder.state.value.status}")
+                    return START_NOT_STICKY
+                }
+
                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
                 val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra(EXTRA_DATA, Intent::class.java)
@@ -78,13 +88,13 @@ class CaptureSessionService : Service() {
                     intent.getParcelableExtra<Intent>(EXTRA_DATA)
                 }
                 val intervalMs = intent.getLongExtra(EXTRA_INTERVAL_MS, FrameSampler.DEFAULT_INTERVAL_MS)
-                startForegroundServiceInternal()
+
+                CaptureStateHolder.setStatus(CaptureStatus.STARTING)
                 startCapture(resultCode, data, intervalMs)
                 START_STICKY
             }
             ACTION_STOP -> {
-                CaptureStateHolder.setStatus(CaptureStatus.STOPPING)
-                teardown()
+                releaseCaptureResources(releaseForeground = true)
                 CaptureStateHolder.reset()
                 stopSelf()
                 START_NOT_STICKY
@@ -102,53 +112,74 @@ class CaptureSessionService : Service() {
         }
     }
 
-    private fun startForegroundServiceInternal() {
-        val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
-    }
-
     private fun startCapture(resultCode: Int, data: Intent?, intervalMs: Long) {
         if (data == null) {
             CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Missing screen capture consent data")
+            stopSelf()
             return
         }
-        if (CaptureStateHolder.state.value.status == CaptureStatus.CAPTURING) return
-        CaptureStateHolder.setStatus(CaptureStatus.STARTING)
-        teardown()
 
         sampler.setIntervalMs(intervalMs)
+        releaseCaptureResources(releaseForeground = false)
+
         captureJob = scope.launch {
             try {
                 val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                val proj = mgr.getMediaProjection(resultCode, data)
-                projection = proj
-                proj.registerCallback(projectionCallback, null)
+                startupExecutor.execute(
+                    promoteToForeground = {
+                        promoteToForegroundMediaProjection()
+                    },
+                    obtainProjection = {
+                        mgr.getMediaProjection(resultCode, data)
+                            ?: error("MediaProjectionManager returned null")
+                    },
+                    initializeProjection = { proj ->
+                        projection = proj
+                        proj.registerCallback(projectionCallback, null)
 
-                val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                val size = Point()
-                @Suppress("DEPRECATION")
-                wm.defaultDisplay.getSize(size)
-                val dpi = resources.displayMetrics.densityDpi
+                        val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                        val size = Point()
+                        @Suppress("DEPRECATION")
+                        wm.defaultDisplay.getSize(size)
+                        val dpi = resources.displayMetrics.densityDpi
 
-                pipeline.start(size.x, size.y, dpi)
-                createVirtualDisplay(proj, size.x, size.y, dpi)
-                CaptureStateHolder.beginCapture(size.x, size.y, dpi)
-                collectFrames()
+                        pipeline.start(size.x, size.y, dpi)
+                        createVirtualDisplay(proj, size.x, size.y, dpi)
+                        CaptureStateHolder.beginCapture(size.x, size.y, dpi)
+                        collectFrames()
+                    }
+                )
             } catch (e: SecurityException) {
+                Log.e(TAG, "Capture session failed before or during projection setup", e)
                 CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Permission denied: ${e.message}")
-                teardown()
+                releaseCaptureResources(releaseForeground = true)
+                stopSelf()
             } catch (e: Exception) {
+                Log.e(TAG, "Capture session startup failed", e)
                 CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Failed to start capture: ${e.message}")
-                teardown()
+                releaseCaptureResources(releaseForeground = true)
+                stopSelf()
             }
+        }
+    }
+
+    private fun promoteToForegroundMediaProjection() {
+        val notification = buildNotification()
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ServiceCompat.startForeground(
+                    this,
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            Log.i(TAG, "Foreground service promoted with mediaProjection type (id=$NOTIFICATION_ID)")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Foreground promotion failed; getMediaProjection() will not be called", e)
+            throw e
         }
     }
 
@@ -163,13 +194,13 @@ class CaptureSessionService : Service() {
         }
     }
 
-    private fun createVirtualDisplay(proj: MediaProjection, width: Int, height: Int, densityDpi: Int) {
-        val surface = pipeline.surface()
-        if (surface == null) {
-            CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Frame surface unavailable")
-            teardown()
-            return
-        }
+    private fun createVirtualDisplay(
+        proj: MediaProjection,
+        width: Int,
+        height: Int,
+        densityDpi: Int
+    ) {
+        val surface = pipeline.surface() ?: error("Frame surface was not created")
         virtualDisplay?.release()
         virtualDisplay = proj.createVirtualDisplay(
             "DraftLensCapture-${Calendar.getInstance().timeInMillis}",
@@ -180,47 +211,84 @@ class CaptureSessionService : Service() {
             surface,
             null,
             null
-        )
+        ) ?: error("createVirtualDisplay() returned null")
+        Log.i(TAG, "VirtualDisplay created (${width}x${height}, ${densityDpi}dpi)")
     }
 
     private fun recreateDisplay(width: Int, height: Int, densityDpi: Int) {
+        val display = virtualDisplay ?: run {
+            Log.e(TAG, "Resize requested but VirtualDisplay is missing")
+            failProjectionSession("VirtualDisplay disappeared during resize", null)
+            return
+        }
         if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING) return
         if (width == CaptureStateHolder.state.value.displayWidth &&
             height == CaptureStateHolder.state.value.displayHeight
         ) {
             return
         }
-        pipeline.resize(width, height, densityDpi)
-        projection?.let { createVirtualDisplay(it, width, height, densityDpi) }
-        CaptureStateHolder.updateDisplay(width, height, densityDpi)
+
+        try {
+            val replacement = pipeline.prepareResize(width, height, densityDpi) ?: return
+            // Caller owns cleanup after detach; VirtualDisplay must not retain a released Surface.
+            display.setSurface(null)
+            replacement.closePrevious()
+            display.setSurface(replacement.surface)
+            display.resize(width, height, densityDpi)
+            CaptureStateHolder.updateDisplay(width, height, densityDpi)
+            Log.i(TAG, "VirtualDisplay resized (${width}x${height}, ${densityDpi}dpi)")
+        } catch (e: Exception) {
+            failProjectionSession("Failed to resize VirtualDisplay", e)
+        }
     }
 
-    private fun teardown() {
+    private fun failProjectionSession(message: String, error: Exception?) {
+        Log.e(TAG, message, error)
+        CaptureStateHolder.setStatus(CaptureStatus.ERROR, error?.let { "$message: ${it.message}" } ?: message)
+        releaseCaptureResources(releaseForeground = true)
+        stopSelf()
+    }
+
+    private fun releaseCaptureResources(releaseForeground: Boolean) {
         captureJob?.cancel()
         captureJob = null
         frameJob?.cancel()
         frameJob = null
-        try { virtualDisplay?.release() } catch (_: Exception) {}
+        try { virtualDisplay?.release() } catch (e: Exception) { Log.w(TAG, "VirtualDisplay release failed", e) }
         virtualDisplay = null
         try {
             projection?.unregisterCallback(projectionCallback)
             projection?.stop()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.w(TAG, "MediaProjection stop failed", e)
+        }
         projection = null
-        try { pipeline.stop() } catch (_: Exception) {}
-        try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
+        try { pipeline.stop() } catch (e: Exception) { Log.w(TAG, "Pipeline stop failed", e) }
+        if (releaseForeground) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Stop foreground failed", e)
+            }
+        }
     }
 
     fun stopCapture() {
-        CaptureStateHolder.setStatus(CaptureStatus.STOPPING)
-        teardown()
+        releaseCaptureResources(releaseForeground = true)
         CaptureStateHolder.reset()
         stopSelf()
     }
 
     override fun onDestroy() {
-        teardown()
-        CaptureStateHolder.setStatus(CaptureStatus.IDLE)
+        releaseCaptureResources(releaseForeground = true)
+        if (CaptureStateHolder.state.value.status != CaptureStatus.ERROR) {
+            CaptureStateHolder.setStatus(CaptureStatus.IDLE)
+        }
         super.onDestroy()
     }
 
@@ -267,6 +335,7 @@ class CaptureSessionService : Service() {
         const val EXTRA_INTERVAL_MS = "extra_interval_ms"
         private const val CHANNEL_ID = "draftlens_capture"
         private const val NOTIFICATION_ID = 1001
+        private const val TAG = "CaptureSessionService"
 
         fun startIntent(context: Context, resultCode: Int, data: Intent, intervalMs: Long): Intent =
             Intent(context, CaptureSessionService::class.java)

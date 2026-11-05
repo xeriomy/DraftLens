@@ -113,9 +113,53 @@ class FramePipeline(
         }
     }
 
-    /** Recreate surface on rotation/resolution change without restarting consent. */
-    fun resize(newWidth: Int, newHeight: Int, densityDpi: Int) {
-        if (newWidth == displayWidth && newHeight == displayHeight) return
-        start(newWidth, newHeight, densityDpi)
+    /** Creates a replacement surface without closing the old resources yet. */
+    fun prepareResize(
+        newWidth: Int,
+        newHeight: Int,
+        densityDpi: Int
+    ): SurfaceSwitch? {
+        if (newWidth == displayWidth && newHeight == displayHeight) return null
+        val previousSurface = surface
+        val previousReader = imageReader
+        val previousThread = handlerThread
+        val previousWidth = displayWidth
+        val previousHeight = displayHeight
+
+        // Detach the old resources from the pipeline so start() can build the replacement.
+        surface = null
+        imageReader = null
+        handlerThread = null
+        displayWidth = 0
+        displayHeight = 0
+
+        try {
+            start(newWidth, newHeight, densityDpi)
+        } catch (e: Exception) {
+            // Discard partially created replacement resources and restore the previous session.
+            runCatching { surface?.release() }
+            runCatching { imageReader?.close() }
+            runCatching { handlerThread?.quitSafely() }
+            surface = previousSurface
+            imageReader = previousReader
+            handlerThread = previousThread
+            displayWidth = previousWidth
+            displayHeight = previousHeight
+            throw e
+        }
+        val replacement = surface ?: error("Replacement surface was not created")
+        var closed = false
+        return SurfaceSwitch(replacement) {
+            if (closed) return@SurfaceSwitch
+            closed = true
+            runCatching { previousSurface?.release() }
+            runCatching { previousReader?.close() }
+            runCatching { previousThread?.quitSafely() }
+        }
     }
+
+    data class SurfaceSwitch(
+        val surface: Surface,
+        val closePrevious: () -> Unit
+    )
 }

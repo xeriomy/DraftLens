@@ -34,14 +34,6 @@ class HomeViewModel(
         }
     }
 
-    fun onNotificationPermissionGranted() {
-        _permissionStatus.value = "Notification granted — requesting capture consent"
-    }
-
-    fun onNotificationPermissionDenied() {
-        _permissionStatus.value = "Notification permission denied — capture not started"
-    }
-
     fun onPermissionRequested() {
         CaptureStateHolder.setStatus(CaptureStatus.AWAITING_PERMISSION)
         _permissionStatus.value = "Requested — awaiting system consent"

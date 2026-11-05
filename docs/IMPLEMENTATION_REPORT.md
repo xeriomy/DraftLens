@@ -8,7 +8,7 @@ GitHub Actions run [42031536957](https://github.com/xeriomy/DraftLens/actions/ru
 - MediaProjection consent flow with screen-capture intent.
 - Foreground service type `mediaProjection`; foregrounding happens before `getMediaProjection()`.
 - Persistent low-priority notification with explicit Stop action.
-- Android 13+ `POST_NOTIFICATIONS` is requested before capture starts; denial blocks the start.
+- Android 13+ `POST_NOTIFICATIONS` is optional; denial leaves capture available, with in-app status and Stop control.
 - Frame sampler defaults to 2 FPS, clamps to 334–2000 ms / ≤3 FPS, interval persisted in DataStore.
 - ImageReader bounded at 3 images; capture callback acquires latest image, drops when interval not elapsed or capture paused.
 - Latest-frame Compose preview; capture status, resolution, frame count, timestamp, latency, errors, pause/resume.

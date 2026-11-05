@@ -57,4 +57,14 @@ class CaptureSessionStateTest {
         assertFalse(CaptureSessionState(status = CaptureStatus.IDLE).isCapturing)
         assertFalse(CaptureSessionState(status = CaptureStatus.ERROR).isCapturing)
     }
+
+    @Test fun `start is blocking while capture has not cleanly ended`() {
+        assertTrue(CaptureSessionState(status = CaptureStatus.AWAITING_PERMISSION).isStartBlocking)
+        assertTrue(CaptureSessionState(status = CaptureStatus.STARTING).isStartBlocking)
+        assertTrue(CaptureSessionState(status = CaptureStatus.CAPTURING).isStartBlocking)
+        assertTrue(CaptureSessionState(status = CaptureStatus.PAUSED).isStartBlocking)
+        assertTrue(CaptureSessionState(status = CaptureStatus.STOPPING).isStartBlocking)
+        assertFalse(CaptureSessionState(status = CaptureStatus.IDLE).isStartBlocking)
+        assertFalse(CaptureSessionState(status = CaptureStatus.ERROR).isStartBlocking)
+    }
 }

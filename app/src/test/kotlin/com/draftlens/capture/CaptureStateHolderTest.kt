@@ -39,4 +39,17 @@ class CaptureStateHolderTest {
         assertEquals(CaptureStatus.CAPTURING, CaptureStateHolder.state.value.status)
         assertFalse(CaptureStateHolder.state.value.isPaused)
     }
+
+    @Test fun `reset clears capture metrics so a fresh session can start`() {
+        CaptureStateHolder.setStatus(CaptureStatus.AWAITING_PERMISSION)
+        CaptureStateHolder.setStatus(CaptureStatus.STARTING)
+        CaptureStateHolder.beginCapture(1080, 2400, 440)
+        CaptureStateHolder.reset()
+
+        val state = CaptureStateHolder.state.value
+        assertEquals(CaptureStatus.IDLE, state.status)
+        assertEquals(0L, state.frameCount)
+        assertNull(state.lastFrameTimestampMs)
+        assertNull(CaptureStateHolder.latestFrame.value)
+    }
 }

@@ -1,16 +1,19 @@
 # Screen Capture — DraftLens Sprint 0
 
 ## Mechanism
-`MediaProjectionManager.createScreenCaptureIntent()` → user consent → `getMediaProjection()` →
-`createVirtualDisplay()` → `ImageReader` surface. All inside `CaptureSessionService`
-(foreground, `mediaProjection` type, `FOREGROUND_SERVICE_MEDIA_PROJECTION` permission).
+`MediaProjectionManager.createScreenCaptureIntent()` → user consent → `ServiceCompat.startForeground()`
+with `ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` → `getMediaProjection()` →
+`createVirtualDisplay()` → `ImageReader` surface. Consent acquisition stays in Activity;
+`CaptureSessionService` performs foreground promotion, projection creation, VirtualDisplay and all frame work.
 
 ## Android version notes (compile/target SDK 35)
-- Android 13+: `POST_NOTIFICATIONS` is requested before capture starts; if denied, the service is not started.
-- **Android 14+**: service must call `startForeground` with the `mediaProjection` type **before**
+- Android 13+ `POST_NOTIFICATIONS` may be denied; capture still proceeds with a valid ongoing
+  foreground notification that Android may hide. In-app status and Stop control remain available.
+- **Android 14+**: service calls `startForeground` with the `mediaProjection` type **before**
   `getMediaProjection()`; the consent token is single-session and dies with the service.
   `MediaProjection.Callback.onStop()` (revocation) and `onCapturedContentResize()` (rotation)
-  are both handled — resize recreates the VirtualDisplay without new consent.
+  are both handled. Rotation keeps the existing VirtualDisplay and calls `setSurface()` then
+  `resize()` with the replacement `ImageReader` surface—no second consent prompt.
 - **Android 12+**: partial screen capture (share one app) is possible in the system dialog;
   DraftLens requests full-screen capture; behavior is identical when partial is chosen.
 - **minSdk 26**: `ImageReader`, `VirtualDisplay`, and foreground-service APIs used are all
