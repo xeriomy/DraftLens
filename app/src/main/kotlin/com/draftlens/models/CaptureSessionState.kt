@@ -20,6 +20,11 @@ data class CaptureSessionState(
 ) {
     val isCapturing: Boolean get() = status == CaptureStatus.CAPTURING || status == CaptureStatus.PAUSED
     val isStartBlocking: Boolean get() = status != CaptureStatus.IDLE && status != CaptureStatus.ERROR
+    val isServiceStartBlocking: Boolean get() =
+        status == CaptureStatus.STARTING ||
+            status == CaptureStatus.CAPTURING ||
+            status == CaptureStatus.PAUSED ||
+            status == CaptureStatus.STOPPING
 }
 
 enum class CaptureStatus {

@@ -76,7 +76,7 @@ class CaptureSessionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         return when (intent?.action) {
             ACTION_START -> {
-                if (CaptureStateHolder.state.value.isStartBlocking) {
+                if (CaptureStateHolder.state.value.isServiceStartBlocking) {
                     Log.i(TAG, "Ignoring duplicate START while capture session is ${CaptureStateHolder.state.value.status}")
                     return START_NOT_STICKY
                 }

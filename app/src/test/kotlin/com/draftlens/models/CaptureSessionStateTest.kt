@@ -58,6 +58,15 @@ class CaptureSessionStateTest {
         assertFalse(CaptureSessionState(status = CaptureStatus.ERROR).isCapturing)
     }
 
+    @Test fun `awaiting permission allows service start but active sessions do not`() {
+        assertFalse(CaptureSessionState(status = CaptureStatus.AWAITING_PERMISSION).isServiceStartBlocking)
+        assertTrue(CaptureSessionState(status = CaptureStatus.STARTING).isServiceStartBlocking)
+        assertTrue(CaptureSessionState(status = CaptureStatus.CAPTURING).isServiceStartBlocking)
+        assertTrue(CaptureSessionState(status = CaptureStatus.PAUSED).isServiceStartBlocking)
+        assertTrue(CaptureSessionState(status = CaptureStatus.STOPPING).isServiceStartBlocking)
+        assertFalse(CaptureSessionState(status = CaptureStatus.IDLE).isServiceStartBlocking)
+    }
+
     @Test fun `start is blocking while capture has not cleanly ended`() {
         assertTrue(CaptureSessionState(status = CaptureStatus.AWAITING_PERMISSION).isStartBlocking)
         assertTrue(CaptureSessionState(status = CaptureStatus.STARTING).isStartBlocking)
