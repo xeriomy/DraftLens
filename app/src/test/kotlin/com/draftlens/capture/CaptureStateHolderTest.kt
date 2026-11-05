@@ -11,6 +11,53 @@ class CaptureStateHolderTest {
         CaptureStateHolder.reset()
     }
 
+    @Test fun `revoked capture clears stale frame and preserves error`() {
+        CaptureStateHolder.setStatus(CaptureStatus.AWAITING_PERMISSION)
+        CaptureStateHolder.setStatus(CaptureStatus.STARTING)
+        CaptureStateHolder.beginCapture(1080, 2400, 440)
+        CaptureStateHolder.clearLatestFrame()
+        CaptureStateHolder.setStatus(CaptureStatus.ERROR, "consent revoked")
+
+        assertNull(CaptureStateHolder.latestFrame.value)
+        assertEquals(CaptureStatus.ERROR, CaptureStateHolder.state.value.status)
+        assertEquals("consent revoked", CaptureStateHolder.state.value.lastError)
+    }
+
+    @Test fun `clearing frame does not reset metrics or state`() {
+        CaptureStateHolder.setStatus(CaptureStatus.ERROR, "startup failed")
+        CaptureStateHolder.clearLatestFrame()
+
+        assertEquals(CaptureStatus.ERROR, CaptureStateHolder.state.value.status)
+        assertEquals("startup failed", CaptureStateHolder.state.value.lastError)
+    }
+
+    @Test fun `resetSessionMetrics clears only counters and timing`() {
+        CaptureStateHolder.setStatus(CaptureStatus.ERROR, "some error")
+        CaptureStateHolder.resetSessionMetrics()
+
+        val state = CaptureStateHolder.state.value
+        assertEquals(CaptureStatus.ERROR, state.status)
+        assertEquals("some error", state.lastError)
+        assertEquals(0L, state.frameCount)
+        assertNull(state.lastFrameWallClockMs)
+        assertNull(state.lastFrameProcessingLatencyMs)
+    }
+
+    @Test fun `normal stop and subsequent fresh session start from idle`() {
+        CaptureStateHolder.reset()
+        assertEquals(CaptureStatus.IDLE, CaptureStateHolder.state.value.status)
+        assertNull(CaptureStateHolder.latestFrame.value)
+
+        CaptureStateHolder.setStatus(CaptureStatus.AWAITING_PERMISSION)
+        CaptureStateHolder.setStatus(CaptureStatus.STARTING)
+        CaptureStateHolder.beginCapture(1080, 2400, 440)
+
+        val state = CaptureStateHolder.state.value
+        assertEquals(CaptureStatus.CAPTURING, state.status)
+        assertEquals(0L, state.frameCount)
+        assertNull(state.lastFrameWallClockMs)
+    }
+
     @Test fun `reset returns holder to idle`() {
         CaptureStateHolder.reset()
         assertEquals(CaptureStatus.IDLE, CaptureStateHolder.state.value.status)

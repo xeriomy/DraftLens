@@ -24,8 +24,10 @@ with `ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` → `getMediaProject
 ## Sampling
 Default 500 ms (2 FPS), configurable 334–2000 ms via DataStore, hard-capped at ~3 FPS
 (`FrameSampler`). `ImageReader(maxImages=3)` bounds backpressure; the listener drops (does not
-queue) frames arriving faster than the sampler. Only the newest `Bitmap` is retained; the
-previous one is recycled after publish. No frames touch disk.
+queue) frames arriving faster than the sampler. The app publishes and retains the latest frame.
+When a newer frame replaces it, the older frame becomes eligible for garbage collection if no
+other component references it. DraftLens does not manually recycle a Bitmap that Compose may
+still be rendering. **Stopping clears references; it does not guarantee immediate native-memory reclamation.** This is not a strict one-Bitmap memory bound. No frames touch disk.
 
 ## Lifecycle / teardown
 `stopCapture()` and `onDestroy()` both release: VirtualDisplay → MediaProjection (unregister +

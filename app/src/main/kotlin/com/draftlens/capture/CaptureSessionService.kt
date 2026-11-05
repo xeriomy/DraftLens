@@ -58,6 +58,7 @@ class CaptureSessionService : Service() {
         override fun onStop() {
             Log.i(TAG, "MediaProjection onStop received; session ended")
             CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Screen capture stopped by system")
+            CaptureStateHolder.clearLatestFrame()
             releaseCaptureResources(releaseForeground = true)
             stopSelf()
         }
@@ -78,7 +79,11 @@ class CaptureSessionService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        return when (intent?.action) {
+        if (intent == null) {
+            Log.w(TAG, "Ignored null start intent; capture session is not restarted")
+            return START_NOT_STICKY
+        }
+        return when (intent.action) {
             ACTION_START -> {
                 if (CaptureStateHolder.state.value.isServiceStartBlocking) {
                     Log.i(TAG, "Ignoring duplicate START while capture session is ${CaptureStateHolder.state.value.status}")
@@ -106,7 +111,7 @@ class CaptureSessionService : Service() {
                     return START_NOT_STICKY
                 }
                 startCapture(resultCode, data, intervalMs)
-                START_STICKY
+                START_NOT_STICKY
             }
             ACTION_STOP -> {
                 releaseCaptureResources(releaseForeground = true)
@@ -167,11 +172,13 @@ class CaptureSessionService : Service() {
             } catch (e: SecurityException) {
                 Log.e(TAG, "Capture session failed before or during projection setup", e)
                 CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Permission denied: ${e.message}")
+                CaptureStateHolder.clearLatestFrame()
                 releaseCaptureResources(releaseForeground = true)
                 stopSelf()
             } catch (e: Exception) {
                 Log.e(TAG, "Capture session startup failed", e)
                 CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Failed to start capture: ${e.message}")
+                CaptureStateHolder.clearLatestFrame()
                 releaseCaptureResources(releaseForeground = true)
                 stopSelf()
             }
@@ -284,6 +291,7 @@ class CaptureSessionService : Service() {
     private fun failProjectionSession(message: String, error: Exception?) {
         Log.e(TAG, message, error)
         CaptureStateHolder.setStatus(CaptureStatus.ERROR, error?.let { "$message: ${it.message}" } ?: message)
+        CaptureStateHolder.clearLatestFrame()
         releaseCaptureResources(releaseForeground = true)
         stopSelf()
     }
@@ -322,6 +330,17 @@ class CaptureSessionService : Service() {
         releaseCaptureResources(releaseForeground = true)
         CaptureStateHolder.reset()
         stopSelf()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // MediaProjection tokens cannot survive process death. Do not recreate them from a null intent.
+        Log.i(TAG, "Activity task removed; capture session will not be restarted with stale consent")
+        releaseCaptureResources(releaseForeground = true)
+        if (CaptureStateHolder.state.value.status != CaptureStatus.ERROR) {
+            CaptureStateHolder.setStatus(CaptureStatus.IDLE)
+        }
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {

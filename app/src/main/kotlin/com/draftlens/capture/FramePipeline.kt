@@ -114,8 +114,7 @@ class FramePipeline(
         try { handlerThread?.quitSafely() } catch (_: Exception) {}
         handlerThread = null
         if (release) {
-            // Frame bitmap intentionally NOT recycled here when restarting;
-            // stop() recycles explicitly. start() reuses the slot.
+            // Stale frame references are cleared by stop()/CaptureStateHolder.
         }
     }
 

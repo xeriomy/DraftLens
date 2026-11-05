@@ -75,8 +75,25 @@ object CaptureStateHolder {
         }
     }
 
-    fun reset() {
+    fun clearLatestFrame() {
         _latestFrame.value = null
+    }
+
+    fun resetSessionMetrics() {
+        _state.update {
+            it.copy(
+                frameCount = 0,
+                lastFrameWallClockMs = null,
+                lastFrameProcessingLatencyMs = null,
+                lastError = null,
+                startedAtMs = null,
+                isPaused = false
+            )
+        }
+    }
+
+    fun reset() {
+        clearLatestFrame()
         _state.value = CaptureSessionState()
     }
 }

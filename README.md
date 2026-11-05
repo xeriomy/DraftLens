@@ -1,8 +1,8 @@
-# DraftLens — Sprint 0: Android Foundation & Live Capture Proof of Concept
+# DraftLens — Sprint 0.1 Capture Hardening
 
-Native Android app that assists MLBB Draft Mode players. Sprint 0 validates the one thing
-everything else depends on: **live screen capture with user consent, in a foreground service,
-with a real-time debug preview.** No recognition models, no recommendations, no overlays yet.
+Native Android app that assists MLBB Draft Mode players. Sprint 0.1 hardens the previously working Foundation: **live screen capture with user consent, in a foreground service, with real-time debug preview, strict lifecycle accounting and bounded/stale-free state handling.**
+
+**Maintainer-reported device smoke:** Sprint 0 capture and preview were used on a physical Android device and confirmed working. Device/version details and expanded matrix results are listed in [docs/TESTING_PHYSICAL_DEVICE.md](docs/TESTING_PHYSICAL_DEVICE.md) as pending.**
 
 ## What works in Sprint 0
 - MediaProjection consent flow (`ActivityResultContracts.CreateScreenCaptureIntent`)
