@@ -56,6 +56,5 @@ jobs:
           "$AAPT" dump permissions "$APK" > /tmp/draftlens-permissions.txt
           "$AAPT" dump xmltree --file AndroidManifest.xml "$APK" > /tmp/draftlens-manifest.txt
           grep -E "android.permission.FOREGROUND_SERVICE(_MEDIA_PROJECTION)?" /tmp/draftlens-permissions.txt
-          grep "android:foregroundServiceType" /tmp/draftlens-manifest.txt
-          grep "mediaProjection" /tmp/draftlens-manifest.txt
+          grep -E "android:foregroundServiceType.*0x00000020" /tmp/draftlens-manifest.txt
           grep "CaptureSessionService" /tmp/draftlens-manifest.txt
