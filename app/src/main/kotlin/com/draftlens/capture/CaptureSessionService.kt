@@ -48,6 +48,7 @@ class CaptureSessionService : Service() {
     private var virtualDisplay: VirtualDisplay? = null
     private var captureJob: Job? = null
     private var frameJob: Job? = null
+    private var foregroundPromoted = false
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -89,7 +90,17 @@ class CaptureSessionService : Service() {
                 }
                 val intervalMs = intent.getLongExtra(EXTRA_INTERVAL_MS, FrameSampler.DEFAULT_INTERVAL_MS)
 
+                if (data == null) {
+                    CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Missing screen capture consent data")
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+
                 CaptureStateHolder.setStatus(CaptureStatus.STARTING)
+                if (!promoteToForegroundMediaProjection()) {
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
                 startCapture(resultCode, data, intervalMs)
                 START_STICKY
             }
@@ -127,7 +138,9 @@ class CaptureSessionService : Service() {
                 val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                 startupExecutor.execute(
                     promoteToForeground = {
-                        promoteToForegroundMediaProjection()
+                        if (!promoteToForegroundMediaProjection()) {
+                            throw SecurityException("Foreground service promotion failed")
+                        }
                     },
                     obtainProjection = {
                         mgr.getMediaProjection(resultCode, data)
@@ -163,9 +176,15 @@ class CaptureSessionService : Service() {
         }
     }
 
-    private fun promoteToForegroundMediaProjection() {
+    private fun promoteToForegroundMediaProjection(): Boolean {
+        if (foregroundPromoted) {
+            Log.i(TAG, "Foreground service already promoted with mediaProjection type (id=$NOTIFICATION_ID)")
+            return true
+        }
+
+        createNotificationChannel()
         val notification = buildNotification()
-        try {
+        return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ServiceCompat.startForeground(
                     this,
@@ -176,10 +195,17 @@ class CaptureSessionService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+            foregroundPromoted = true
             Log.i(TAG, "Foreground service promoted with mediaProjection type (id=$NOTIFICATION_ID)")
+            true
         } catch (e: SecurityException) {
             Log.e(TAG, "Foreground promotion failed; getMediaProjection() will not be called", e)
-            throw e
+            CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Foreground service promotion failed: ${e.message}")
+            false
+        } catch (e: Exception) {
+            Log.e(TAG, "Foreground promotion failed; getMediaProjection() will not be called", e)
+            CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Foreground service promotion failed: ${e.message}")
+            false
         }
     }
 
@@ -275,6 +301,7 @@ class CaptureSessionService : Service() {
             } catch (e: Exception) {
                 Log.w(TAG, "Stop foreground failed", e)
             }
+            foregroundPromoted = false
         }
     }
 
