@@ -69,6 +69,7 @@ fun DebugCaptureScreen(
     ) {
         Text("DraftLens — Capture Debug (Sprint 0)", color = Color.White, style = MaterialTheme.typography.titleLarge)
         Text("Detection: Not implemented in Sprint 0", color = Color.Gray)
+        Text("DraftLens window is hidden from capture to avoid recursive frames.", color = Color.Gray)
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
