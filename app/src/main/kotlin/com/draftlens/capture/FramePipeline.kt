@@ -1,0 +1,121 @@
+package com.draftlens.capture
+
+import android.graphics.Bitmap
+import android.media.ImageReader
+import android.os.Handler
+import android.os.HandlerThread
+import android.view.Surface
+import com.draftlens.models.CapturedFrame
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/**
+ * Owns ImageReader → PixelCopy/Bitmap → StateFlow.
+ * - maxImages capped at 3; oldest frame dropped on backpressure (no blocking).
+ * - Only the latest Bitmap is retained by the pipeline; previous snapshots are dropped for GC.
+ * - All work off the main thread (dedicated HandlerThread + Channel-like drop).
+ */
+class FramePipeline(
+    private val sampler: FrameSampler,
+    private val isActive: () -> Boolean = { true }
+) {
+    private var imageReader: ImageReader? = null
+    private var handlerThread: HandlerThread? = null
+    private var surface: Surface? = null
+
+    private val _latestFrame = MutableStateFlow<CapturedFrame?>(null)
+    val latestFrame: StateFlow<CapturedFrame?> = _latestFrame.asStateFlow()
+
+    var displayWidth: Int = 0
+        private set
+    var displayHeight: Int = 0
+        private set
+
+    fun start(width: Int, height: Int, densityDpi: Int) {
+        stopInternal(release = true)
+        displayWidth = width
+        displayHeight = height
+        handlerThread = HandlerThread("draftlens-capture").also { it.start() }
+        val handler = Handler(handlerThread!!.looper)
+
+        imageReader = ImageReader.newInstance(width, height, android.graphics.PixelFormat.RGBA_8888, 3).also { reader ->
+            reader.setOnImageAvailableListener({ reader ->
+                val image = try { reader.acquireLatestImage() } catch (e: Exception) {
+                    e.printStackTrace()
+                    null
+                }
+                if (image == null) return@setOnImageAvailableListener
+                val startedAt = System.currentTimeMillis()
+                try {
+                    if (!isActive()) return@setOnImageAvailableListener
+                    if (sampler.shouldEmit(startedAt)) {
+                        // Reference image only to avoid leaks; copy pixels via Image plane.
+                        // Sprint 0 keeps this synchronous and in-memory; no disk, no upload.
+                        val bitmap = imageToBitmap(image, width, height)
+                        if (bitmap != null) {
+                            sampler.markEmitted(startedAt)
+                            val latency = System.currentTimeMillis() - startedAt
+                            _latestFrame.value = CapturedFrame(bitmap, startedAt, latency, width, height)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Never let a bad frame kill the pipeline; next frame recovers.
+                    e.printStackTrace()
+                } finally {
+                    try { image.close() } catch (_: Exception) {}
+                }
+            }, handler)
+        }
+        surface = imageReader!!.surface
+        sampler.reset()
+    }
+
+    fun surface(): Surface? = surface
+
+    private fun imageToBitmap(image: android.media.Image, width: Int, height: Int): Bitmap? {
+        // Direct plane copy for RGBA_8888; fallback null drops the frame (counted as dropped).
+        return try {
+            val planes = image.planes
+            if (planes.isEmpty()) return null
+            val buffer = planes[0].buffer
+            val pixelStride = planes[0].pixelStride
+            val rowStride = planes[0].rowStride
+            val rowPadding = rowStride - pixelStride * width
+            val bmp = Bitmap.createBitmap(width + (rowPadding / pixelStride), height, Bitmap.Config.ARGB_8888)
+            bmp.copyPixelsFromBuffer(buffer)
+            if (rowPadding == 0) bmp else Bitmap.createBitmap(bmp, 0, 0, width, height).also {
+                if (it !== bmp) bmp.recycle()
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun stop() {
+        stopInternal(release = true)
+        _latestFrame.value?.let { frame ->
+            if (!frame.bitmap.isRecycled) frame.bitmap.recycle()
+        }
+        _latestFrame.value = null
+    }
+
+    private fun stopInternal(release: Boolean) {
+        try { surface?.release() } catch (_: Exception) {}
+        surface = null
+        try { imageReader?.close() } catch (_: Exception) {}
+        imageReader = null
+        try { handlerThread?.quitSafely() } catch (_: Exception) {}
+        handlerThread = null
+        if (release) {
+            // Frame bitmap intentionally NOT recycled here when restarting;
+            // stop() recycles explicitly. start() reuses the slot.
+        }
+    }
+
+    /** Recreate surface on rotation/resolution change without restarting consent. */
+    fun resize(newWidth: Int, newHeight: Int, densityDpi: Int) {
+        if (newWidth == displayWidth && newHeight == displayHeight) return
+        start(newWidth, newHeight, densityDpi)
+    }
+}

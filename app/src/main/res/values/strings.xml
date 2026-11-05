@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">DraftLens</string>
+    <string name="capture_channel_name">DraftLens capture</string>
+    <string name="capture_notification_title">DraftLens is capturing your screen</string>
+    <string name="capture_notification_text">Tap to view debug screen</string>
+    <string name="capture_stop_action">Stop</string>
+    <string name="detection_not_implemented">Not implemented in Sprint 0</string>
+</resources>

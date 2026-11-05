@@ -1,0 +1,50 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant SDK licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Install SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew || ls -la
+
+      - name: Run unit tests
+        run: ./gradlew test --stacktrace
+
+      - name: Run lint
+        run: ./gradlew lint --stacktrace
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: draftlens-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Verify manifest service config
+        run: grep -q "CaptureSessionService" app/src/main/AndroidManifest.xml && grep -q "mediaProjection" app/src/main/AndroidManifest.xml && echo "Manifest OK"
