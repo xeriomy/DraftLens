@@ -6,12 +6,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
@@ -64,7 +69,7 @@ fun DebugCaptureScreen(
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().background(Color.Black).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(Color.Black).verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("DraftLens — Capture Debug (Sprint 0)", color = Color.White, style = MaterialTheme.typography.titleLarge)
@@ -120,18 +125,38 @@ fun DebugCaptureScreen(
             )
         }
 
-        frame?.let { f ->
-            if (!f.bitmap.isRecycled) {
-                Image(
-                    bitmap = f.bitmap.asImageBitmap(),
-                    contentDescription = "Latest captured frame",
-                    modifier = Modifier.fillMaxWidth().aspectRatio(9f / 16f),
-                    contentScale = ContentScale.FillBounds
-                )
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            containerColor = Color(0xFF181D26)
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Live preview", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(320.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                        .background(Color(0xFF111621)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    frame?.let { f ->
+                        if (!f.bitmap.isRecycled) {
+                            Image(
+                                bitmap = f.bitmap.asImageBitmap(),
+                                contentDescription = "Latest captured frame",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                    } ?: Text(
+                        "No frame yet. Start capture to see live preview.",
+                        color = Color.Gray
+                    )
+                }
             }
-        } ?: Text(
-            "No frame yet. Start capture to see live preview.",
-            color = Color.Gray
-        )
+        }
     }
 }
