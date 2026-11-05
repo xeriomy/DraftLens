@@ -1,7 +1,7 @@
 # Sprint 0 Implementation Report
 
-**Result:** Sprint 0 implementation complete at PR #1 / commit `da25b04`.
-GitHub Actions run [42030773114](https://github.com/xeriomy/DraftLens/actions/runs/42030773114) completed successfully.
+**Result:** Sprint 0 implementation complete at PR #1 / head `6244637` (implementation commit `da25b04`).
+GitHub Actions run [42031536957](https://github.com/xeriomy/DraftLens/actions/runs/42031536957) completed successfully.
 
 ## Implemented
 - Native Kotlin + Compose project, single module `:app`; repository LICENSE remains MIT.
