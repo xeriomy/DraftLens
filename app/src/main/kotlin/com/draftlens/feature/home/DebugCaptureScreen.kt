@@ -1,8 +1,12 @@
 package com.draftlens.feature.home
 
 import android.app.Activity
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -43,6 +47,10 @@ fun DebugCaptureScreen(
     val perm by vm.permissionStatus.collectAsState()
     val interval by vm.intervalMs.collectAsState()
 
+    val consentIntent = remember {
+        com.draftlens.permissions.ProjectionPermission.createScreenCaptureIntent(activity)
+    }
+
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -54,8 +62,20 @@ fun DebugCaptureScreen(
         }
     }
 
-    val consentIntent = remember {
-        com.draftlens.permissions.ProjectionPermission.createScreenCaptureIntent(activity)
+    val requestStartCapture = {
+        vm.onPermissionRequested()
+        launcher.launch(consentIntent)
+    }
+
+    val notificationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            vm.onNotificationPermissionGranted()
+            requestStartCapture()
+        } else {
+            vm.onNotificationPermissionDenied()
+        }
     }
 
     Column(
@@ -80,8 +100,17 @@ fun DebugCaptureScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
-                    vm.onPermissionRequested()
-                    launcher.launch(consentIntent)
+                    val needsNotificationPermission =
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            ContextCompat.checkSelfPermission(
+                                activity,
+                                Manifest.permission.POST_NOTIFICATIONS
+                            ) != PackageManager.PERMISSION_GRANTED
+                    if (needsNotificationPermission) {
+                        notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        requestStartCapture()
+                    }
                 },
                 enabled = state.status != CaptureStatus.CAPTURING && state.status != CaptureStatus.PAUSED
             ) { Text("Start Capture") }

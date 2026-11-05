@@ -52,8 +52,8 @@ class CaptureSessionService : Service() {
             teardown()
         }
 
-        override fun onCapturedContentResize(width: Int, height: Int, densityDpi: Int) {
-            recreateDisplay(width, height, densityDpi)
+        override fun onCapturedContentResize(width: Int, height: Int) {
+            recreateDisplay(width, height, resources.displayMetrics.densityDpi)
         }
     }
 

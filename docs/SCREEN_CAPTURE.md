@@ -6,6 +6,7 @@
 (foreground, `mediaProjection` type, `FOREGROUND_SERVICE_MEDIA_PROJECTION` permission).
 
 ## Android version notes (compile/target SDK 35)
+- Android 13+: `POST_NOTIFICATIONS` is requested before capture starts; if denied, the service is not started.
 - **Android 14+**: service must call `startForeground` with the `mediaProjection` type **before**
   `getMediaProjection()`; the consent token is single-session and dies with the service.
   `MediaProjection.Callback.onStop()` (revocation) and `onCapturedContentResize()` (rotation)
