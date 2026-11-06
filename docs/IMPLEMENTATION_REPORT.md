@@ -1,37 +1,52 @@
-# DraftLens — Sprint 0.1 Capture Hardening Report
+# DraftLens — Sprint 0.1.3 Capture Lifecycle Report
 
 **Branch:** `sprint-0-android-foundation` · **PR:** #1
 
 ## Physical-device status
-- **Maintainer-reported smoke test: PASS for basic capture and live preview** (Sprint 0 device test, details not supplied).
-- Device model, Android version, frame counts and latency measurements from that run were not provided and are not claimed.
-- Expanded lifecycle matrix (`docs/TESTING_PHYSICAL_DEVICE.md`) remains mostly **NOT RUN** until executed.
+- **Baseline maintainer-reported smoke (Sprint 0): PARTIAL.** Capture and live preview were reported working on a physical device. Device model, Android version, frame counts and measurements were not supplied, so full PASS is not claimed.
+- Expanded physical-device lifecycle matrix in `docs/TESTING_PHYSICAL_DEVICE.md` remains **NOT RUN** except the one PARTIAL row. Expanded scenarios not claimed executed.
 
-## Verified fixes in this sprint
-- AGP **8.6.1** for API 35 support; Gradle 8.7 and Kotlin 2.0.20 unchanged.
-- Lint is strict (`abortOnError = true`, release checks enabled) and CI gates on it.
-- `CaptureStartupExecutor`: promotion → projection → initialization; failure propagation tested.
-- Foreground promotion occurs before `getMediaProjection()`; consent is fresh each session.
-- One `VirtualDisplay` per `MediaProjection`: rotation keeps it and calls `setSurface()` + `resize()`.
-- `AUTO_MIRROR` replaced `PUBLIC` flag.
-- Capture dimensions prefer `maximumWindowMetrics` on API 30+, with the legacy path retained below it.
-- FrameSampler uses monotonic elapsed time on Android (`SystemClock.elapsedRealtime()`), with an injectable JVM clock for tests.
-- Memory ownership: no recycling while Compose can render a Bitmap; stale frames are unreferenced and GC-reclaimed.
-- Frame timing wall-clock values are kept separate; UI reports frame-processing time only, not detection latency.
-- Consent intent is created at Start time rather than composition time.
+## Verified fixes (Sprint 0.1 set)
+- AGP **8.6.1**, Gradle 8.7, Kotlin 2.0.20, compile/target SDK 35, minSdk 26
+- Strict lint enforced and used as CI gate
+- Foreground service promoted synchronously with `mediaProjection` type before projection acquisition
+- `START_NOT_STICKY`; null `Intent` is ignored; fresh consent per session
+- `CaptureStartupExecutor` ordering: promotion → projection → initialization
+- One `VirtualDisplay` per session; rotation uses `setSurface()` + `resize()`
+- Capture dimensions prefer `WindowManager.maximumWindowMetrics` on API 30+, fallback below
+- `VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR`
+- Monotonic sampling; wall-clock retained separately; UI reports frame-processing latency only
+- Latest frame is published by `CaptureStateHolder`; Compose bitmap is not recycled while rendering
+- Termination paths are unified through `terminateSession()`:
+  - normal Stop → IDLE
+  - projection revocation/startup failure → ERROR, with frame cleared and metrics reset
+  - task removal/process end uses the same state cleanup
+  - permission and dimensions are cleared on termination, ERROR is preserved
+- Consent intent is requested fresh at Start time
 
-## Regression coverage
-- Startup ordering, promotion failure and projection-acquisition failure.
-- Sampler monotonic behavior, interval clamping/reset and pause/resume reset.
-- Capture-state reset and start-blocking rules.
-- Projection consent-result validation.
-- Detection stubs return `NotImplemented`.
-- Android instrumentation source checks service manifest type/permissions and compiles in CI.
+## Tests covered by CI
+- Startup order and failure propagation
+- Target sampled time versus wall clock: monotonic reset, pause/resume semantics
+- Clear/retained-frame removal tests using shared `terminateSession()`
+- Session state reset and start-blocking rules
+- Projection consent-result validation
+- Detection stubs explicitly `NotImplemented`
 
-## Limits
-- No recognition, OCR, recommendations, overlay, API sync, or hero data.
-- Sprint 0.1 keeps one full-size preview frame only; analysis crop/downscale is future Vision Foundation work.
-- Self-capture: no `FLAG_SECURE`; user can choose “Entire screen” (includes debug UI) or “A single app” in the system scope dialog.
+## CI (source of truth)
+Local Gradle assembly is unavailable on this host because Android SDK build tools are x86_64 and host is aarch64. GitHub Actions is the build of record for `test`, `lint`, `assembleAndroidTest`, `assembleDebug`, APK artifact upload and merged-manifest inspection.
 
-## Sprint 1 Vision Foundation recommendation
-Start with rotation-aware preprocessing plus slot annotation, then a deterministic hero-ID lookup. Keep capture/Vision interfaces separate so ML evaluation can use the same sanitized frame input. Add the expanded physical-device matrix before store release.
+Note: invocation `./gradlew assembleDebug` is intentionally not claimed locally; CI output is the deliverable.
+
+## Open limitations
+- No recognition, OCR, recommendations, overlays, API sync, or hero data
+- Analysis frame pipeline not added yet; preview is one full-size frame
+- Self-capture: no `FLAG_SECURE` by maintainer preference; user can choose “Entire screen” or “A single app”
+- Native-memory reclamation after reference clearing is not guaranteed and is not a strict one-Bitmap bound
+- OEM/background/store policies and review gates remain for release
+- Physical-device matrix needs execution before store release
+
+## Next: Sprint 1 Vision Foundation
+1. Rotation-aware preprocessing and slot capture analysis
+2. Deterministic hero-ID lookup
+3. Minimal frame logging only through explicit opt-in
+4. Execute physical-device matrix before any store submission

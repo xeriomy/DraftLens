@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.update
  * - [clearLatestFrame]: removes the latest-frame reference only.
  * - [resetSessionMetrics]: clears counters, timing, dimensions and permission metadata only.
  * - [reset]: replaces the whole session state with a fresh idle state.
+ * - [terminateSession]: shared terminal path; preserves ERROR unless the user explicitly requests a clean stop.
  */
 object CaptureStateHolder {
     private val _state = MutableStateFlow(CaptureSessionState())
@@ -79,6 +80,25 @@ object CaptureStateHolder {
             if (CaptureTransitions.canTransition(current.status, target)) {
                 CaptureTransitions.transition(current, target).copy(isPaused = paused)
             } else current
+        }
+    }
+
+    /**
+     * Shared terminal cleanup for all capture-ending paths.
+     *
+     * If [error] is supplied and the current state is not already ERROR, transition to ERROR
+     * with that message. An existing ERROR and its message are preserved unless [forceIdle]
+     * is requested by an explicit user Stop action. Normal termination ([error] = null and
+     * [forceIdle] = false) ends in IDLE when no ERROR already exists.
+     */
+    fun terminateSession(error: String? = null, forceIdle: Boolean = false) {
+        if (error != null && _state.value.status != CaptureStatus.ERROR) {
+            setStatus(CaptureStatus.ERROR, error)
+        }
+        clearLatestFrame()
+        resetSessionMetrics()
+        if (forceIdle || _state.value.status != CaptureStatus.ERROR) {
+            setStatus(CaptureStatus.IDLE)
         }
     }
 

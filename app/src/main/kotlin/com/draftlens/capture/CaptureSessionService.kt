@@ -97,13 +97,14 @@ class CaptureSessionService : Service() {
                 val intervalMs = intent.getLongExtra(EXTRA_INTERVAL_MS, FrameSampler.DEFAULT_INTERVAL_MS)
 
                 if (data == null) {
-                    CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Missing screen capture consent data")
+                    cleanupAfterTermination("Missing screen capture consent data")
                     stopSelf()
                     return START_NOT_STICKY
                 }
 
                 CaptureStateHolder.setStatus(CaptureStatus.STARTING)
                 if (!promoteToForegroundMediaProjection()) {
+                    cleanupAfterTermination()
                     stopSelf()
                     return START_NOT_STICKY
                 }
@@ -111,8 +112,7 @@ class CaptureSessionService : Service() {
                 START_NOT_STICKY
             }
             ACTION_STOP -> {
-                cleanupAfterTermination()
-                CaptureStateHolder.reset()
+                cleanupAfterTermination(forceIdle = true)
                 stopSelf()
                 START_NOT_STICKY
             }
@@ -131,7 +131,7 @@ class CaptureSessionService : Service() {
 
     private fun startCapture(resultCode: Int, data: Intent?, intervalMs: Long) {
         if (data == null) {
-            CaptureStateHolder.setStatus(CaptureStatus.ERROR, "Missing screen capture consent data")
+            cleanupAfterTermination("Missing screen capture consent data")
             stopSelf()
             return
         }
@@ -280,10 +280,7 @@ class CaptureSessionService : Service() {
     }
 
     private fun terminateCaptureWithError(errorMessage: String) {
-        if (CaptureStateHolder.state.value.status != CaptureStatus.ERROR) {
-            CaptureStateHolder.setStatus(CaptureStatus.ERROR, errorMessage)
-        }
-        cleanupAfterTermination()
+        cleanupAfterTermination(errorMessage)
         stopSelf()
     }
 
@@ -292,12 +289,8 @@ class CaptureSessionService : Service() {
         terminateCaptureWithError(error?.let { "$message: ${it.message}" } ?: message)
     }
 
-    private fun cleanupAfterTermination() {
-        CaptureStateHolder.clearLatestFrame()
-        CaptureStateHolder.resetSessionMetrics()
-        if (CaptureStateHolder.state.value.status != CaptureStatus.ERROR) {
-            CaptureStateHolder.setStatus(CaptureStatus.IDLE)
-        }
+    private fun cleanupAfterTermination(errorMessage: String? = null, forceIdle: Boolean = false) {
+        CaptureStateHolder.terminateSession(errorMessage, forceIdle)
         releaseCaptureResources(releaseForeground = true)
     }
 
@@ -332,8 +325,7 @@ class CaptureSessionService : Service() {
     }
 
     fun stopCapture() {
-        releaseCaptureResources(releaseForeground = true)
-        CaptureStateHolder.reset()
+        cleanupAfterTermination(forceIdle = true)
         stopSelf()
     }
 

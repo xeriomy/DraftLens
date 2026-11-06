@@ -1,4 +1,4 @@
-# Screen Capture — DraftLens Sprint 0
+# Screen Capture — DraftLens Sprint 0.1.3
 
 ## Mechanism
 `MediaProjectionManager.createScreenCaptureIntent()` → user consent → `ServiceCompat.startForeground()`
@@ -30,10 +30,17 @@ other component references it. DraftLens does not manually recycle a Bitmap that
 still be rendering. **Stopping clears references; it does not guarantee immediate native-memory reclamation.** This is not a strict one-Bitmap memory bound. No frames touch disk.
 
 ## Lifecycle / teardown
-`stopCapture()` and `onDestroy()` both release: VirtualDisplay → MediaProjection (unregister +
-stop) → ImageReader/Surface → HandlerThread → foreground notification. Any exception in the
-acquisition path is caught per-frame so one bad frame never kills the session; permission
-failures surface as `ERROR` with a message, never a crash.
+Normal user Stop produces IDLE. External revocation, startup failure, resize failure, process
+termination and task removal all use the same terminate path:
+
+- clear the latest-frame reference
+- reset session counters, timing, dimensions and density
+- clear stale permission/session metadata
+- preserve ERROR and its original message when applicable
+- release VirtualDisplay → MediaProjection → ImageReader/Surface → HandlerThread → notification
+- if no ERROR already exists, transition to IDLE
+
+Any exception in the acquisition path is caught per frame so one bad frame never kills the session.
 
 ## Limitations (honest list)
 - Frame→Bitmap conversion uses the RGBA_8888 plane path; padded-stride rows are cropped.
