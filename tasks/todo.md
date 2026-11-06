@@ -27,5 +27,5 @@
 - [x] Task 8: Detection stub interfaces with explicit NotImplemented states
 
 ## Phase 4: Docs + verify
-- [x] Task 9: README, ARCHITECTURE, SCREEN_CAPTURE, DATA_SOURCES, PRIVACY, ADR-001
+- [x] Task 9: README, ARCHITECTURE, SCREEN_CAPTURE, DATA_SOURCES, ADR-001
 - [x] Task 10: Tests + lint + assembleDebug green; APK + manifest verified; report written

@@ -62,7 +62,7 @@ grow without re-architecture.
 - [x] Task 8: Detection stub interfaces (NotImplemented states)
 
 ### Phase 4: Docs + verify
-- [x] Task 9: README, ARCHITECTURE, SCREEN_CAPTURE, DATA_SOURCES (verified live), PRIVACY, ADR-001
+- [x] Task 9: README, ARCHITECTURE, SCREEN_CAPTURE, DATA_SOURCES (verified live), ADR-001
 - [x] Task 10: Tests pass, lint passes, debug APK built, manifest verified, report written
 
 ## Risks and Mitigations

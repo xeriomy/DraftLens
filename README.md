@@ -38,6 +38,5 @@ Implementation Report in this repo's history / final message for what was and wa
 - `docs/ARCHITECTURE.md` — module layout, state machine, data flow
 - `docs/SCREEN_CAPTURE.md` — MediaProjection lifecycle, Android 14+ rules, limits
 - `docs/DATA_SOURCES.md` — Rone Arena vs MLBBDex audit (verified live 2026-11-04)
-- `docs/PRIVACY.md` — consent, no-upload, game-internals rules
 - `docs/decisions/ADR-001-android-native.md` — why native, single-module, and version pins
 - `docs/IMPLEMENTATION_REPORT.md` — executed verification, limitations, next tasks
