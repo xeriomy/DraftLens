@@ -14,6 +14,7 @@ import com.draftlens.vision.preprocessing.ProcessFrameRequest
 import com.draftlens.vision.preprocessing.ProcessFrameResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PixelArrayFramePreprocessorTest {
@@ -104,6 +105,28 @@ class PixelArrayFramePreprocessorTest {
             PreprocessFailureCode.UNSUPPORTED_FORMAT,
             (result as ProcessFrameResult.Failure).reason.code,
         )
+    }
+
+    @Test fun `render failure is reported as RENDER_FAILED instead of throwing`() {
+        PixelArrayFramePreprocessor.renderHook = { _, _ ->
+            throw IllegalStateException("forced render failure")
+        }
+        try {
+            val frame = syntheticOriginal(
+                width = 2,
+                height = 2,
+                rotation = FrameRotation.ROTATION_90,
+                pixels = intArrayOf(0, 1, 2, 3),
+            )
+            val result = PixelArrayFramePreprocessor.process(frame, ProcessFrameRequest())
+            val failure = result as ProcessFrameResult.Failure
+            assertEquals(PreprocessFailureCode.RENDER_FAILED, failure.reason.code)
+            assertTrue(
+                failure.reason.message.contains("forced render failure"),
+            )
+        } finally {
+            PixelArrayFramePreprocessor.renderHook = null
+        }
     }
 
     private class ForeignPayload(

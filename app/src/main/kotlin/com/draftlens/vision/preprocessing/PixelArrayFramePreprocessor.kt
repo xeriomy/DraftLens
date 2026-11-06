@@ -14,6 +14,12 @@ import kotlin.math.floor
  */
 object PixelArrayFramePreprocessor : FramePreprocessor {
 
+    /**
+     * Test-only seam: when set, used instead of [render] so JVM tests can force a render
+     * failure. Production behavior is unchanged while null. Must be reset after each use.
+     */
+    internal var renderHook: ((PixelArrayFramePayload, PreprocessPlan) -> PixelArrayFramePayload)? = null
+
     override fun process(input: OriginalFrame, request: ProcessFrameRequest): ProcessFrameResult {
         val startedAtNanos = System.nanoTime()
 
@@ -38,7 +44,7 @@ object PixelArrayFramePreprocessor : FramePreprocessor {
         val outputPayload = if (reusesPayload) {
             payload
         } else {
-            runCatching { render(payload, plan) }.getOrElse { throwable ->
+            runCatching { (renderHook ?: ::render)(payload, plan) }.getOrElse { throwable ->
                 return ProcessFrameResult.Failure(
                     PreprocessFailure(
                         PreprocessFailureCode.RENDER_FAILED,

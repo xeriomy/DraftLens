@@ -5,7 +5,6 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import com.draftlens.vision.geometry.FrameTransform
 import com.draftlens.vision.model.FrameId
-import com.draftlens.vision.model.FrameRotation
 import com.draftlens.vision.model.OriginalFrame
 import com.draftlens.vision.model.ProcessedFrame
 import com.draftlens.vision.model.android.BitmapFramePayload
@@ -75,36 +74,12 @@ object AndroidFramePreprocessor : FramePreprocessor {
     }
 
     /**
-     * Builds the single source-to-processed matrix: rotation correction, oriented crop
-     * offset, then downscale. Each `post*` call applies after the previous operation.
+     * Builds the single source-to-processed matrix from the same pure-Kotlin elements that
+     * are unit-tested on the JVM (`sourceToProcessedMatrixElements`); ordering matches the
+     * documented pipeline: rotate, crop offset, then downscale.
      */
-    private fun matrixFor(transform: FrameTransform): Matrix {
-        val matrix = Matrix()
-        when (transform.rotation) {
-            FrameRotation.ROTATION_0 -> Unit
-            FrameRotation.ROTATION_90 -> {
-                matrix.setRotate(90f)
-                matrix.postTranslate(transform.sourceHeight.toFloat(), 0f)
-            }
-            FrameRotation.ROTATION_180 -> {
-                matrix.setRotate(180f)
-                matrix.postTranslate(transform.sourceWidth.toFloat(), transform.sourceHeight.toFloat())
-            }
-            FrameRotation.ROTATION_270 -> {
-                matrix.setRotate(270f)
-                matrix.postTranslate(0f, transform.sourceWidth.toFloat())
-            }
-        }
-        matrix.postTranslate(
-            -transform.cropPixelRect.left.toFloat(),
-            -transform.cropPixelRect.top.toFloat(),
-        )
-        matrix.postScale(
-            transform.processedWidth.toFloat() / transform.cropPixelRect.width,
-            transform.processedHeight.toFloat() / transform.cropPixelRect.height,
-        )
-        return matrix
-    }
+    private fun matrixFor(transform: FrameTransform): Matrix =
+        Matrix().apply { setValues(sourceToProcessedMatrixElements(transform)) }
 
     private const val NANOS_PER_MILLISECOND = 1_000_000L
 }
