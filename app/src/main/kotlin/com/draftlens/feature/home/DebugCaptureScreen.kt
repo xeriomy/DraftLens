@@ -35,6 +35,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.draftlens.capture.CaptureController
 import com.draftlens.datastore.AppPreferencesRepository
 import com.draftlens.models.CaptureStatus
+import com.draftlens.vision.model.android.BitmapFramePayload
 
 @Composable
 fun DebugCaptureScreen(
@@ -141,20 +142,20 @@ fun DebugCaptureScreen(
                         .background(Color(0xFF111621)),
                     contentAlignment = Alignment.Center
                 ) {
-                    frame?.let { f ->
-                        val bitmap = f.bitmap
-                        if (bitmap != null && !bitmap.isRecycled) {
-                            Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "Latest captured frame",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Fit
-                            )
-                        }
-                    } ?: Text(
-                        "No frame yet. Start capture to see live preview.",
-                        color = Color.Gray
-                    )
+                    val payload = frame?.frame?.payload as? BitmapFramePayload
+                    if (payload != null) {
+                        Image(
+                            bitmap = payload.bitmap.asImageBitmap(),
+                            contentDescription = "Latest captured frame",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+                    } else {
+                        Text(
+                            "No frame yet. Start capture to see live preview.",
+                            color = Color.Gray
+                        )
+                    }
                 }
             }
         }
