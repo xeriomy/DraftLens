@@ -10,6 +10,37 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-06-sprint-1a-vision-foundation-design.md`
 
+## Execution Checkpoint (2026-11-06)
+
+Branch: `sprint-1-vision-foundation`, based on `origin/main` at `ae92eaf`.
+
+| Task | Status | Commits | Review |
+|------|--------|---------|--------|
+| 1. Vision model and geometry value types | Done | `a2731d3` | Clean |
+| 2. Geometry subsystem | Done | `357a40f` | Clean |
+| 3. Capture non-null frames | Done | `8e1381a` | Clean |
+| 4. Preprocessing engine | Done | `79bd211`, `41aa126`, `b81e740` | Clean after 2 fix rounds |
+| 5. Slot annotation store and codec | Done | `1086b75`, `cab3d8d` | Clean after 1 fix round |
+| 6. Calibration profiles | **In progress** | `08ca414` (WIP, unreviewed) | Not started |
+| 7. Vision frame source and ViewModel | Not started | — | — |
+| 8. Compose Vision Lab | Not started | — | — |
+| 9. Documentation | Not started | — | — |
+| 10. CI, PR, APK, report | Not started | — | — |
+
+Last verified state: `cab3d8d`, full JVM unit suite 127/127 passing (local aarch64 host).
+Task 6 work exists but was not compiled or tested before the local Android SDK was cleared
+from `/tmp/opencode/android-sdk`; treat `08ca414` as unverified.
+
+Resume point:
+
+1. Review the Task 6 WIP code against Task 6 of this plan and the design spec. The accepted
+   `CalibrationLoadResult` shape is `Success(profiles)`, `UnsupportedSchema(message)`,
+   `Corrupt(message)`.
+2. Run `./gradlew :app:testDebugUnitTest --tests 'com.draftlens.calibration.*'` and the full
+   `./gradlew test` once a working Android SDK is available; fix and commit Task 6.
+3. Continue with Tasks 7–10. Push the branch and let CI be the build of record for lint,
+   `assembleAndroidTest`, and `assembleDebug`.
+
 ## Global Constraints
 
 - Single Gradle module `:app`; logical packages only; no empty packages or new modules.
