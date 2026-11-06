@@ -1,9 +1,12 @@
 package com.draftlens.vision.geometry
 
+import kotlinx.serialization.Serializable
+
 /**
  * Validated rectangle in normalized source coordinates: finite values within
  * `[0, 1]`, strict `left < right` and `top < bottom` (empty is not valid).
  */
+@Serializable
 data class NormalizedRect(
     val left: Float,
     val top: Float,
