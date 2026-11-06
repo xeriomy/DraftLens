@@ -60,6 +60,14 @@ object SlotAnnotationCodec {
             }
         }
         slots
+            .groupBy { it.id }
+            .filterValues { it.size > 1 }
+            .keys
+            .firstOrNull()
+            ?.let { id ->
+                throw SlotCodecException("Duplicate slot id '$id' in annotation data.")
+            }
+        slots
             .groupBy { Triple(it.type, it.team, it.index) }
             .filterValues { it.size > 1 }
             .keys

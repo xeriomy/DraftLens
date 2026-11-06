@@ -2,6 +2,7 @@ package com.draftlens.annotation
 
 import com.draftlens.vision.annotation.DraftSlot
 import com.draftlens.vision.annotation.SlotAnnotationCodec
+import com.draftlens.vision.annotation.SlotCodecException
 import com.draftlens.vision.annotation.SlotSchema
 import com.draftlens.vision.annotation.SlotSchemaException
 import com.draftlens.vision.annotation.SlotTeam
@@ -77,6 +78,23 @@ class SlotAnnotationCodecTest {
             {"schemaVersion":1,"id":"b","type":"BAN","team":"ALLY","index":1,"rect":{"left":0.4,"top":0.4,"right":0.6,"bottom":0.6},"label":null}
         ]}"""
         assertThrows(Exception::class.java) { SlotAnnotationCodec.decode(json) }
+    }
+
+    @Test fun `codec rejects duplicate slot ids on decode`() {
+        val json = """{"schemaVersion":1,"slots":[
+            {"schemaVersion":1,"id":"a","type":"BAN","team":"ALLY","index":1,"rect":{"left":0.0,"top":0.0,"right":0.2,"bottom":0.2},"label":null},
+            {"schemaVersion":1,"id":"a","type":"PICK","team":"ENEMY","index":2,"rect":{"left":0.4,"top":0.4,"right":0.6,"bottom":0.6},"label":null}
+        ]}"""
+        val exception = assertThrows(SlotCodecException::class.java) { SlotAnnotationCodec.decode(json) }
+        assertTrue(exception.message.orEmpty().contains("'a'"))
+    }
+
+    @Test fun `codec rejects duplicate slot ids on encode`() {
+        val slots = listOf(
+            slot(id = "a", index = 1),
+            slot(id = "a", type = SlotType.PICK, team = SlotTeam.ENEMY, index = 2, left = 0.4f, top = 0.4f, right = 0.6f, bottom = 0.6f),
+        )
+        assertThrows(SlotCodecException::class.java) { SlotAnnotationCodec.encode(slots) }
     }
 
     @Test fun `codec accepts same index in different scopes`() {
