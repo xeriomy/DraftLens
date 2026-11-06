@@ -35,7 +35,19 @@ object PixelArrayFramePreprocessor : FramePreprocessor {
             plan.rotation == FrameRotation.ROTATION_0 &&
             plan.outputWidth == plan.sourceWidth &&
             plan.outputHeight == plan.sourceHeight
-        val outputPayload = if (reusesPayload) payload else render(payload, plan)
+        val outputPayload = if (reusesPayload) {
+            payload
+        } else {
+            runCatching { render(payload, plan) }.getOrElse { throwable ->
+                return ProcessFrameResult.Failure(
+                    PreprocessFailure(
+                        PreprocessFailureCode.RENDER_FAILED,
+                        "pixel rendering failed: " +
+                            (throwable.message ?: throwable.javaClass.simpleName),
+                    ),
+                )
+            }
+        }
 
         return ProcessFrameResult.Success(
             ProcessedFrame(

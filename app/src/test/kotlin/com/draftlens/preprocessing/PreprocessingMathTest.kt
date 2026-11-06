@@ -3,7 +3,9 @@ package com.draftlens.preprocessing
 import com.draftlens.vision.geometry.NormalizedRect
 import com.draftlens.vision.geometry.PixelRect
 import com.draftlens.vision.model.FrameId
+import com.draftlens.vision.model.FramePayload
 import com.draftlens.vision.model.FrameRotation
+import com.draftlens.vision.model.PixelFormat
 import com.draftlens.vision.model.OriginalFrame
 import com.draftlens.vision.model.PixelArrayFramePayload
 import com.draftlens.vision.preprocessing.AndroidFramePreprocessor
@@ -24,6 +26,31 @@ class PreprocessingMathTest {
         assertTrue(plan.isSuccess)
         assertEquals(1280, plan.getOrThrow().outputWidth)
         assertEquals(720, plan.getOrThrow().outputHeight)
+    }
+
+    @Test fun `output beyond the int pixel limit is rejected instead of overflowing`() {
+        // 100000x100000 source, no allocation: the payload lies about capacity but plan
+        // only reads dimensions, so the Int-overflow guard must reject the 50000x50000
+        // output (2.5e9 pixels) instead of crashing or wrapping.
+        val frame = OriginalFrame(
+            id = FrameId("huge-frame"),
+            payload = HugePayload(width = 100_000, height = 100_000),
+            sourceWidth = 100_000,
+            sourceHeight = 100_000,
+            displayRotation = FrameRotation.ROTATION_0,
+            rotation = FrameRotation.ROTATION_0,
+            capturedAtElapsedRealtimeMs = 1_000,
+            wallClockTimestampMs = 1_700_000_000_000,
+            captureLatencyMs = 2,
+        )
+        val result = PreprocessingMath.plan(
+            frame,
+            ProcessFrameRequest(maxProcessedDimension = 50_000, maxPixels = Long.MAX_VALUE),
+        )
+        assertEquals(
+            PreprocessFailureCode.OUTPUT_TOO_LARGE,
+            (result as PreprocessPlanResult.Failure).reason.code,
+        )
     }
 
     @Test fun `invalid input reports honest failure`() {
@@ -127,6 +154,15 @@ class PreprocessingMathTest {
         assertEquals(320, plan.outputWidth)
         assertEquals(200, plan.outputHeight)
     }
+}
+
+/** Capacity-lying payload for plan-only checks; never allocates pixel data. */
+private class HugePayload(
+    override val width: Int,
+    override val height: Int,
+) : FramePayload {
+    override val format: PixelFormat = PixelFormat.ARGB_8888
+    override val byteCountEstimate: Long = width.toLong() * height.toLong() * 4
 }
 
 internal fun syntheticOriginal(

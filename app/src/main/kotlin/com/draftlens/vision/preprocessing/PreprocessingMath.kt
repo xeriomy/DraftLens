@@ -49,8 +49,9 @@ object PreprocessingMath {
      * Validates [frame] against [request] and derives the oriented crop and output size.
      *
      * The output long side never exceeds [ProcessFrameRequest.maxProcessedDimension] and is
-     * never upscaled. Aspect ratio is preserved within one output pixel by rounding the
-     * short side. Failures carry a [PreprocessFailureCode] instead of throwing.
+     * never upscaled. Output is also rejected above `Int.MAX_VALUE` pixels because rendering
+     * allocates a single `IntArray`. Aspect ratio is preserved within one output pixel by
+     * rounding the short side. Failures carry a [PreprocessFailureCode] instead of throwing.
      */
     fun plan(frame: OriginalFrame, request: ProcessFrameRequest): PreprocessPlanResult {
         if (frame.sourceWidth <= 0 || frame.sourceHeight <= 0) {
@@ -120,6 +121,13 @@ object PreprocessingMath {
             )
         }
         val outputPixels = outputWidth.toLong() * outputHeight.toLong()
+        // Rendering allocates an IntArray; more than Int.MAX_VALUE pixels cannot fit it.
+        if (outputPixels > Int.MAX_VALUE) {
+            return failure(
+                PreprocessFailureCode.OUTPUT_TOO_LARGE,
+                "output has $outputPixels pixels, exceeds the ${Int.MAX_VALUE} pixel limit",
+            )
+        }
         if (outputPixels > request.maxPixels) {
             return failure(
                 PreprocessFailureCode.OUTPUT_TOO_LARGE,
