@@ -40,6 +40,7 @@ import org.junit.Before
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class VisionLabViewModelTest {
 
@@ -114,15 +115,14 @@ class VisionLabViewModelTest {
             )
     }
 
-    /** Blocks the first call until released, so a stale result can arrive late. */
+    /** Blocks the call for [BLOCKED_FRAME_ID] until released, so a stale result can arrive late. */
     private class BlockingFakePreprocessor : FramePreprocessor {
         private val gate = CountDownLatch(1)
         private val firstReturned = CountDownLatch(1)
-        private var calls = 0
+        private val blocked = AtomicBoolean(false)
 
         override fun process(input: OriginalFrame, request: ProcessFrameRequest): ProcessFrameResult {
-            calls++
-            if (calls == 1) {
+            if (input.id.value == BLOCKED_FRAME_ID && blocked.compareAndSet(false, true)) {
                 gate.await()
                 firstReturned.countDown()
             }
@@ -207,7 +207,7 @@ class VisionLabViewModelTest {
     }
 
     @Test fun `stale processing result is discarded after a newer request`() = runBlocking {
-        val source = FakeVisionFrameSource(originalFrame("first"))
+        val source = FakeVisionFrameSource(originalFrame(BLOCKED_FRAME_ID))
         val preprocessor = BlockingFakePreprocessor()
         val vm = VisionLabViewModel(source, preprocessor, FakeCalibrationRepository())
 
@@ -219,8 +219,8 @@ class VisionLabViewModelTest {
         assertEquals("second", published.processed?.sourceId?.value)
 
         preprocessor.releaseFirst()
-        assertTrue("the first call never returned", preprocessor.awaitFirstReturned())
-        Thread.sleep(100)
+        assertTrue("the blocked call never returned", preprocessor.awaitFirstReturned())
+        Thread.sleep(200)
 
         assertEquals("second", vm.uiState.value.processed?.sourceId?.value)
     }
@@ -331,6 +331,11 @@ class VisionLabViewModelTest {
         assertEquals(SlotType.PICK, slots.single().type)
         assertEquals(SlotTeam.ENEMY, slots.single().team)
         assertEquals(NormalizedRect(0.2f, 0.3f, 0.4f, 0.5f), slots.single().rect)
+    }
+
+    private companion object {
+        /** The frame id whose processing call the fake blocks. */
+        const val BLOCKED_FRAME_ID = "first"
     }
 }
 
