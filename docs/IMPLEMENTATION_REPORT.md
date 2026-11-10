@@ -32,8 +32,9 @@ host is aarch64 and AGP 8.6.1 publishes only an x86_64 `aapt2`, so no Gradle tas
 touches resources can run there — verified as
 `Cannot run program ".../aapt2": error=2`. CI is the build of record.
 
-**Final green run:** <https://github.com/xeriomy/DraftLens/actions/runs/42918290133>
-(commit `691b9d2`, 2026-11-10).
+**Final green run for the code state:** <https://github.com/xeriomy/DraftLens/actions/runs/42918290133>
+(commit `691b9d2`, 2026-11-10). The two documentation-only commits after it were also green:
+`42918914137` (`da35ca0`) and `42919023498` (`8d3a330`, branch head).
 
 | CI run | Commit | Result | What it showed |
 |---|---|---|---|
