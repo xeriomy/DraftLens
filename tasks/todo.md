@@ -9,8 +9,8 @@
 - [x] Task 6: Versioned calibration profiles — WIP `08ca414` reviewed and completed in
       `b84b69f` + `85f04c8` (red CI `42905781209`, green CI `42906245805`)
 - [x] Task 7: Vision frame source and ViewModel (`fedaa4e`, `ec24a9a`)
-- [x] Task 8: Compose Vision Lab
-- [x] Task 9: Vision documentation
+- [x] Task 8: Compose Vision Lab (`6ad2287`, `45e2f2c`, `691b9d2`)
+- [x] Task 9: Vision documentation (`303b818`, `da35ca0`)
 - [x] Task 10: CI, PR, APK artifact, implementation report
 
 Verification for Sprint 1A runs in GitHub Actions (ubuntu-latest, x86_64) because the
@@ -18,10 +18,16 @@ authoring host is aarch64 and AGP's `aapt2` is an x86_64-only binary, so no Grad
 touches resources can run locally. Draft PR: https://github.com/xeriomy/DraftLens/pull/2
 
 Executed commands (CI, `./gradlew`):
-- `./gradlew test` — JVM unit tests
+- `./gradlew test` — 167 JVM unit tests, 0 failures, 0 errors, 0 skipped
 - `./gradlew assembleAndroidTest` — instrumentation tests compiled, **not executed**
 - `./gradlew lint` — strict lint, `abortOnError = true`
 - `./gradlew assembleDebug` — debug APK, uploaded as the `draftlens-debug` artifact
+
+Final green run: https://github.com/xeriomy/DraftLens/actions/runs/42918290133 (`691b9d2`).
+
+Whole-branch review against the plan and spec: eight findings fixed in `691b9d2`, each with a
+test that failed first. The remaining minor findings are listed in the implementation report
+and the review ledger.
 
 Physical-device verification of the Vision Lab is **pending**. No emulator or device was
 available in this environment.

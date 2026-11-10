@@ -12,10 +12,11 @@ calibration profiles. No recognition, no recommendations, no overlays.
 - [x] Task 4: Validated preprocessing engine (`79bd211`, `41aa126`, `b81e740`)
 - [x] Task 5: Manual slot annotations and JSON codec (`1086b75`, `cab3d8d`)
 - [x] Task 6: Versioned calibration profiles (`08ca414` reviewed, completed in `b84b69f`, `85f04c8`)
-- [x] Task 7: Vision frame source and ViewModel (`fedaa4e`, `ec24a9a`, `0c7d286`)
-- [x] Task 8: Compose Vision Lab (tab host, preview, canvas, slot editor, profile controls)
-- [x] Task 9: Vision documentation (`docs/VISION_*.md`, README, ARCHITECTURE)
+- [x] Task 7: Vision frame source and ViewModel (`fedaa4e`, `ec24a9a`, `0c7d286`, `b4c8c78`)
+- [x] Task 8: Compose Vision Lab (`6ad2287`, `45e2f2c`, `691b9d2`)
+- [x] Task 9: Vision documentation (`303b818`, `da35ca0`)
 - [x] Task 10: CI, PR, APK artifact, implementation report
+- [x] Final whole-branch review; findings fixed in `691b9d2` with a failing test each
 
 ### Sprint 1A verification
 CI (GitHub Actions, ubuntu-latest x86_64) is the build of record: `test`,
