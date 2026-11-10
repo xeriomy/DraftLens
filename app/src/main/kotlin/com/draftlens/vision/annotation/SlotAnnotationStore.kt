@@ -170,7 +170,8 @@ class SlotAnnotationStore(
     private fun overlaps(a: NormalizedRect, b: NormalizedRect): Boolean =
         a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
 
-    private companion object {
+    companion object {
+        /** Minimum normalized size of a slot rectangle, in both axes. */
         const val MIN_SIZE = 0.01f
     }
 }

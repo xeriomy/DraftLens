@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -21,7 +22,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,9 +63,17 @@ fun AnnotationCanvas(
 
     val currentSlots by rememberUpdatedState(slots)
     val currentSelected by rememberUpdatedState(selectedSlotId)
-    val geometry = remember(frame) { frame?.let { CanvasGeometry.of(it) } }
+    // Keyed on the frame's shape, not its identity: a new frame of the same size and
+    // rotation must not restart the gesture detectors.
+    val geometry = remember(frame?.sourceWidth, frame?.sourceHeight, frame?.rotation) {
+        frame?.let { CanvasGeometry.of(it) }
+    }
     val fitted = remember(canvasSize, geometry) {
-        fittedRect(canvasSize, geometry?.orientedWidth ?: 0, geometry?.orientedHeight ?: 0)
+        fittedImageRect(
+            available = Size(canvasSize.width.toFloat(), canvasSize.height.toFloat()),
+            width = geometry?.orientedWidth ?: 0,
+            height = geometry?.orientedHeight ?: 0,
+        )
     }
     val handleRadius = with(LocalDensity.current) { HANDLE_RADIUS.toPx() }
     val textMeasurer = rememberTextMeasurer()
@@ -78,7 +86,7 @@ fun AnnotationCanvas(
                     onTap = { offset ->
                         val geo = geometry ?: return@detectTapGestures
                         val point = geo.canvasToNormalized(offset, fitted) ?: return@detectTapGestures
-                        onSelect(currentSlots.lastOrNull { it.rect.containsPoint(point) }?.id)
+                        onSelect(AnnotationHitTest.slotAt(point, currentSlots)?.id)
                     },
                 )
             }
@@ -92,13 +100,15 @@ fun AnnotationCanvas(
                         when {
                             selected != null && handle != null ->
                                 gesture = CanvasGesture.Resize(selected.id, handle, selected.rect)
-                            selected != null && selected.rect.containsPoint(point) -> {
-                                gesture = CanvasGesture.Move(selected.id, point)
-                                onSelect(selected.id)
-                            }
                             else -> {
-                                gesture = CanvasGesture.Create(point, point)
-                                pending = Rect(point.x, point.y, point.x, point.y)
+                                val hit = AnnotationHitTest.slotAt(point, currentSlots)
+                                if (hit != null) {
+                                    gesture = CanvasGesture.Move(hit.id, point)
+                                    onSelect(hit.id)
+                                } else {
+                                    gesture = CanvasGesture.Create(point, point)
+                                    pending = Rect(point.x, point.y, point.x, point.y)
+                                }
                             }
                         }
                     },
@@ -147,10 +157,12 @@ fun AnnotationCanvas(
 
         val payload = frame?.payload as? BitmapFramePayload
         if (payload != null) {
-            drawImage(
-                image = payload.bitmap.asImageBitmap(),
-                dstOffset = IntOffset(fitted.left.toInt(), fitted.top.toInt()),
-                dstSize = IntSize(fitted.width.toInt(), fitted.height.toInt()),
+            drawOrientedBitmap(
+                bitmap = payload.bitmap.asImageBitmap(),
+                sourceWidth = geo.sourceWidth,
+                sourceHeight = geo.sourceHeight,
+                rotation = geo.rotation,
+                fitted = fitted,
             )
         }
 
@@ -225,8 +237,9 @@ private enum class Corner { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT }
  * Frame geometry for the canvas: the transform between source pixels and the oriented
  * image the user annotates.
  */
-private class CanvasGeometry(
+private data class CanvasGeometry(
     val transform: FrameTransform,
+    val rotation: FrameRotation,
     val sourceWidth: Int,
     val sourceHeight: Int,
     val orientedWidth: Int,
@@ -247,6 +260,7 @@ private class CanvasGeometry(
                     processedWidth = orientedWidth,
                     processedHeight = orientedHeight,
                 ),
+                rotation = frame.rotation,
                 sourceWidth = frame.sourceWidth,
                 sourceHeight = frame.sourceHeight,
                 orientedWidth = orientedWidth,
@@ -301,25 +315,6 @@ private class CanvasGeometry(
         }?.first
     }
 }
-
-private fun fittedRect(canvas: IntSize, orientedWidth: Int, orientedHeight: Int): Rect {
-    if (canvas.width <= 0 || canvas.height <= 0 || orientedWidth <= 0 || orientedHeight <= 0) return Rect.Zero
-    val scale = min(
-        canvas.width.toFloat() / orientedWidth,
-        canvas.height.toFloat() / orientedHeight,
-    )
-    val width = orientedWidth * scale
-    val height = orientedHeight * scale
-    return Rect(
-        left = (canvas.width - width) / 2f,
-        top = (canvas.height - height) / 2f,
-        right = (canvas.width + width) / 2f,
-        bottom = (canvas.height + height) / 2f,
-    )
-}
-
-private fun NormalizedRect.containsPoint(point: NormalizedPoint): Boolean =
-    point.x in left..right && point.y in top..bottom
 
 /** Minimum normalized size the store accepts; smaller drags are discarded. */
 private const val MIN_SIZE = 0.01f

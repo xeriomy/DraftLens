@@ -144,35 +144,23 @@ class VisionLabViewModel(
         return result
     }
 
-    fun moveSlot(id: String, deltaX: Float, deltaY: Float) {
-        annotationStore.move(id, deltaX, deltaY)
-        refreshSlots()
-    }
+    fun moveSlot(id: String, deltaX: Float, deltaY: Float): Result<DraftSlot> =
+        annotationStore.move(id, deltaX, deltaY).also { refreshSlots() }
 
-    fun resizeSlot(id: String, rect: NormalizedRect) {
-        annotationStore.resize(id, rect)
-        refreshSlots()
-    }
+    fun resizeSlot(id: String, rect: NormalizedRect): Result<DraftSlot> =
+        annotationStore.resize(id, rect).also { refreshSlots() }
 
-    fun updateSlotTeam(id: String, team: SlotTeam) {
-        annotationStore.updateTeam(id, team)
-        refreshSlots()
-    }
+    fun updateSlotTeam(id: String, team: SlotTeam): Result<DraftSlot> =
+        annotationStore.updateTeam(id, team).also { refreshSlots() }
 
-    fun updateSlotType(id: String, type: SlotType) {
-        annotationStore.updateType(id, type)
-        refreshSlots()
-    }
+    fun updateSlotType(id: String, type: SlotType): Result<DraftSlot> =
+        annotationStore.updateType(id, type).also { refreshSlots() }
 
-    fun updateSlotIndex(id: String, index: Int) {
-        annotationStore.updateIndex(id, index)
-        refreshSlots()
-    }
+    fun updateSlotIndex(id: String, index: Int): Result<DraftSlot> =
+        annotationStore.updateIndex(id, index).also { refreshSlots() }
 
-    fun updateSlotLabel(id: String, label: String?) {
-        annotationStore.updateLabel(id, label)
-        refreshSlots()
-    }
+    fun updateSlotLabel(id: String, label: String?): Result<DraftSlot> =
+        annotationStore.updateLabel(id, label).also { refreshSlots() }
 
     fun selectSlot(id: String?) {
         runCatching { annotationStore.select(id) }
@@ -302,12 +290,28 @@ class VisionLabViewModel(
             _uiState.update { it.copy(message = "The profile contains duplicate slot indexes") }
             return
         }
+        // Refuse before touching the current slots, so a profile is applied whole or not at all.
+        val unusable = profile.slots.firstOrNull { slot ->
+            slot.rect.width < SlotAnnotationStore.MIN_SIZE ||
+                slot.rect.height < SlotAnnotationStore.MIN_SIZE ||
+                slot.index < 1
+        }
+        if (unusable != null) {
+            _uiState.update {
+                it.copy(message = "The profile contains a slot that is too small or has an invalid index")
+            }
+            return
+        }
         annotationStore.reset()
+        var failure: String? = null
         profile.slots.forEach { slot ->
-            annotationStore.add(slot.type, slot.team, slot.rect, slot.index, slot.label)
+            val result = annotationStore.add(slot.type, slot.team, slot.rect, slot.index, slot.label)
+            if (result.isFailure) failure = result.exceptionOrNull()?.message
         }
         refreshSlots()
-        _uiState.update { it.copy(message = "Applied profile ${profile.label ?: profile.profileId}") }
+        _uiState.update {
+            it.copy(message = failure ?: "Applied profile ${profile.label ?: profile.profileId}")
+        }
     }
 
     private fun Result<Unit>.messageFor(success: String, failure: String): String =

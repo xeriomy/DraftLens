@@ -13,12 +13,9 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import com.draftlens.capture.CaptureVisionFrameSource
 import com.draftlens.feature.home.DebugCaptureScreen
 import com.draftlens.feature.visionlab.VisionLabScreen
 
@@ -34,8 +31,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val app = application as DraftLensApp
         setContent {
-            val scope = rememberCoroutineScope()
-            val visionSource = remember { CaptureVisionFrameSource.fromHolder(scope) }
             var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
             Column(modifier = Modifier.fillMaxSize()) {
@@ -60,7 +55,7 @@ class MainActivity : ComponentActivity() {
                     0 -> DebugCaptureScreen(preferences = app.preferences, activity = this@MainActivity)
                     else -> VisionLabScreen(
                         calibrationRepository = app.calibrationProfiles,
-                        source = visionSource,
+                        source = app.visionSource,
                     )
                 }
             }

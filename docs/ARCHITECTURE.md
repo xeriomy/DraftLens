@@ -62,4 +62,3 @@ partial frames. There is no recognizer, so nothing reports a detection. See
 - MediaProjection buffers are display-oriented, so production frames keep `rotation = ROTATION_0` and only record `displayRotation`.
 - Calibration profiles store normalized rectangles and metadata only — never pixels or screenshots.
 - No network code. Data-source audit is documentation-only (`docs/DATA_SOURCES.md`).
-

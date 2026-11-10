@@ -34,7 +34,7 @@ jobs:
       - name: Summarize unit tests
         run: |
           total=0; failures=0; errors=0; skipped=0
-          for f in app/build/test-results/testDebugUnitTest/TEST-*.xml; do
+          for f in app/build/test-results/test*/TEST-*.xml; do
             [ -e "$f" ] || continue
             t=$(grep -o 'tests="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
             fl=$(grep -o 'failures="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')

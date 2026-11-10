@@ -8,6 +8,7 @@ import android.util.Log
 import android.view.Surface
 import com.draftlens.models.CapturedFrame
 import com.draftlens.vision.model.FrameId
+import com.draftlens.vision.model.FrameOrientation
 import com.draftlens.vision.model.FrameRotation
 import com.draftlens.vision.model.OriginalFrame
 import com.draftlens.vision.model.android.BitmapFramePayload
@@ -78,7 +79,7 @@ class FramePipeline(
                             sourceHeight = height,
                             displayRotation = displayRotation,
                             // MediaProjection buffers are display-oriented; never double-rotate pixels.
-                            rotation = FrameRotation.ROTATION_0,
+                            rotation = FrameOrientation.correctionFor(displayRotation),
                             capturedAtElapsedRealtimeMs = sampledAtMs,
                             wallClockTimestampMs = System.currentTimeMillis(),
                             captureLatencyMs = processingLatencyMs

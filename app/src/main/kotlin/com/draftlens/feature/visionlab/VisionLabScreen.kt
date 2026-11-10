@@ -1,6 +1,5 @@
 package com.draftlens.feature.visionlab
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,16 +30,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.draftlens.vision.annotation.SlotTeam
 import com.draftlens.vision.annotation.SlotType
 import com.draftlens.vision.calibration.CalibrationRepository
-import com.draftlens.vision.model.OriginalFrame
 import com.draftlens.vision.model.VisionFrameSource
-import com.draftlens.vision.model.android.BitmapFramePayload
 import com.draftlens.vision.preprocessing.AndroidFramePreprocessor
 
 /**
@@ -114,7 +109,17 @@ private fun FramePreviewCard(
                     .background(Color(0xFF111621)),
                 contentAlignment = Alignment.Center,
             ) {
-                FrameImage(state.displayFrame)
+                OrientedFrameImage(
+                    frame = state.displayFrame,
+                    modifier = Modifier.fillMaxSize(),
+                    placeholder = {
+                        Text(
+                            "No bitmap frame. Start capture on the Debug Capture tab, or use a test fixture.",
+                            color = Color.Gray,
+                            modifier = Modifier.padding(12.dp),
+                        )
+                    },
+                )
             }
 
             val frame = state.displayFrame
@@ -133,22 +138,11 @@ private fun FramePreviewCard(
     }
 }
 
-@Composable
-private fun FrameImage(frame: OriginalFrame?) {
-    val payload = frame?.payload
-    when (payload) {
-        is BitmapFramePayload -> Image(
-            bitmap = payload.bitmap.asImageBitmap(),
-            contentDescription = "Captured frame",
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit,
-        )
-        else -> Text(
-            "No bitmap frame. Start capture on the Debug Capture tab, or use a test fixture.",
-            color = Color.Gray,
-            modifier = Modifier.padding(12.dp),
-        )
-    }
+/** The crop of a processed frame, or "none" when the whole oriented frame was used. */
+private fun cropText(processed: com.draftlens.vision.model.ProcessedFrame?): String {
+    val crop = processed?.transform?.crop ?: return "none"
+    if (crop.left == 0f && crop.top == 0f && crop.right == 1f && crop.bottom == 1f) return "none"
+    return "${crop.left}..${crop.right} × ${crop.top}..${crop.bottom}"
 }
 
 @Composable
@@ -198,7 +192,7 @@ private fun ProcessingInspectorCard(
             Text("Source dimensions: ${source?.sourceWidth ?: 0} × ${source?.sourceHeight ?: 0}")
             Text("Output dimensions: ${processed?.payload?.width ?: 0} × ${processed?.payload?.height ?: 0}")
             Text("Rotation: ${processed?.rotation ?: source?.rotation ?: "—"}")
-            Text("Crop: ${processed?.transform?.crop?.let { "${it.left}..${it.right} × ${it.top}..${it.bottom}" } ?: "none"}")
+            Text("Crop: ${cropText(processed)}")
             Text("Scale: ${processed?.transform?.scale ?: "—"}")
             Text("Duration: ${processed?.processingDurationMs?.let { "$it ms" } ?: "—"}")
             Text("Status: ${state.processStatus}")

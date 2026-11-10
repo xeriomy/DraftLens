@@ -101,12 +101,13 @@ private fun SlotCard(
     onDelete: () -> Unit,
     vm: VisionLabViewModel,
 ) {
-    var left by remember(slot.id) { mutableStateOf(slot.rect.left.toString()) }
-    var top by remember(slot.id) { mutableStateOf(slot.rect.top.toString()) }
-    var right by remember(slot.id) { mutableStateOf(slot.rect.right.toString()) }
-    var bottom by remember(slot.id) { mutableStateOf(slot.rect.bottom.toString()) }
-    var label by remember(slot.id) { mutableStateOf(slot.label ?: "") }
-    var index by remember(slot.id) { mutableStateOf(slot.index.toString()) }
+    // Keyed on the model values, so a slot moved on the canvas resyncs the text fields.
+    var left by remember(slot.rect.left) { mutableStateOf(slot.rect.left.toString()) }
+    var top by remember(slot.rect.top) { mutableStateOf(slot.rect.top.toString()) }
+    var right by remember(slot.rect.right) { mutableStateOf(slot.rect.right.toString()) }
+    var bottom by remember(slot.rect.bottom) { mutableStateOf(slot.rect.bottom.toString()) }
+    var label by remember(slot.label) { mutableStateOf(slot.label ?: "") }
+    var index by remember(slot.index) { mutableStateOf(slot.index.toString()) }
     var error by remember(slot.id) { mutableStateOf<String?>(null) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -124,7 +125,7 @@ private fun SlotCard(
                 SlotTeam.entries.forEach { team ->
                     FilterChip(
                         selected = slot.team == team,
-                        onClick = { vm.updateSlotTeam(slot.id, team) },
+                        onClick = { error = vm.updateSlotTeam(slot.id, team).exceptionOrNull()?.message },
                         label = { Text(team.name) },
                     )
                 }
@@ -133,7 +134,7 @@ private fun SlotCard(
                 SlotType.entries.forEach { type ->
                     FilterChip(
                         selected = slot.type == type,
-                        onClick = { vm.updateSlotType(slot.id, type) },
+                        onClick = { error = vm.updateSlotType(slot.id, type).exceptionOrNull()?.message },
                         label = { Text(type.name) },
                     )
                 }
@@ -203,10 +204,18 @@ private fun SlotCard(
                             error = "Index must be a number of at least 1."
                             return@OutlinedButton
                         }
-                        vm.updateSlotIndex(slot.id, newIndex)
-                        vm.updateSlotLabel(slot.id, label.takeIf { it.isNotBlank() })
-                        vm.resizeSlot(slot.id, rect)
-                        error = null
+                        val indexFailure = vm.updateSlotIndex(slot.id, newIndex).exceptionOrNull()?.message
+                        if (indexFailure != null) {
+                            error = indexFailure
+                            return@OutlinedButton
+                        }
+                        val labelFailure = vm.updateSlotLabel(slot.id, label.takeIf { it.isNotBlank() })
+                            .exceptionOrNull()?.message
+                        if (labelFailure != null) {
+                            error = labelFailure
+                            return@OutlinedButton
+                        }
+                        error = vm.resizeSlot(slot.id, rect).exceptionOrNull()?.message
                     },
                 ) { Text("Apply") }
                 OutlinedButton(onClick = onDelete) { Text("Delete") }
