@@ -17,6 +17,10 @@ calibration profiles. No recognition, no recommendations, no overlays.
 - [x] Task 9: Vision documentation (`303b818`, `da35ca0`)
 - [x] Task 10: CI, PR, APK artifact, implementation report
 - [x] Final whole-branch review; findings fixed in `691b9d2` with a failing test each
+- [x] Focused review fixes (`8f046c0`, `313775d`, `007621f`): display rotation updated
+      independently of the capture size, canvas letterbox rejected, Clear cancels in-flight
+      processing, shared slot validator for calibration documents, frozen-frame required for
+      profile save/update/apply, documentation and CI record updated
 
 ### Sprint 1A verification
 CI (GitHub Actions, ubuntu-latest x86_64) is the build of record: `test`,

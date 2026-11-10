@@ -24,9 +24,15 @@ The run also prints the unit-test totals and uploads the APK as the `draftlens-d
 artifact, then re-reads the packaged manifest to confirm the foreground-service permissions
 and the `mediaProjection` service type survived the build.
 
-Latest green run for the code state: <https://github.com/xeriomy/DraftLens/actions/runs/42918290133>
-(commit `691b9d2`) — 167 unit tests, 0 failures, 0 errors, 0 skipped, executed in both the
-debug and the release unit-test variants (354 test executions in total).
+Latest green run: <https://github.com/xeriomy/DraftLens/actions/runs/42926731121>
+— head SHA `007621f808182355103c884582b31145040c3837`, **199 unit tests, 0 failures, 0 errors,
+0 skipped**, executed in both the debug and the release unit-test variants (398 test
+executions in total).
+
+Artifact `draftlens-debug` from that run: digest
+`sha256:c8c88e09b2399539107ad3156683ca82d39011263f755fa7681b545ee18ee2ba`; the APK inside it
+(`app-debug.apk`) has SHA-256
+`b13fcc80e816bbdee5a60b4e4f30333bbad347c6f35e2513c9a14f8657dae247`.
 
 ## Test inventory
 
@@ -39,10 +45,13 @@ debug and the release unit-test variants (354 test executions in total).
 | Matrix | `preprocessing/SourceToProcessedMatrixTest.kt` | the Android matrix matches the pure-Kotlin elements |
 | Annotation store | `annotation/SlotAnnotationStoreTest.kt` | add/move/resize/update/delete/select, stable ids, duplicate `(type, team, index)`, overlap severity, bounds clamping |
 | Annotation codec | `annotation/SlotAnnotationCodecTest.kt` | JSON round trip, schema versions, unknown fields, invalid rectangles |
-| Calibration | `calibration/CalibrationCodecCompatibilityTest.kt` | ratio tolerance, exact orientation match, unsupported envelope/profile/slot schema, malformed JSON, blank id, round trip |
-| Calibration store | `datastore/CalibrationProfileDataStoreTest.kt` | empty store, upsert, replace, delete, unsupported document refused and left untouched, corrupt document refused and not reset, clear-as-escape-hatch |
+| Calibration | `calibration/CalibrationCodecCompatibilityTest.kt` | ratio tolerance, exact orientation match, unsupported envelope/profile/slot schema, malformed JSON, blank id, round trip, unusable slots, duplicate slot ids, duplicate `(type, team, index)`, duplicate profile ids |
+| Calibration store | `datastore/CalibrationProfileDataStoreTest.kt` | empty store, upsert, replace, delete, unsupported document refused and left untouched, corrupt document refused and not reset, a document with an unusable slot is corrupt and not replaced, clear-as-escape-hatch |
 | Vision source | `capture/CaptureVisionFrameSourceTest.kt` | capture-status mapping, later state changes, latest-frame publication |
-| Vision Lab state | `feature/visionlab/VisionLabViewModelTest.kt` | live frame exposure, freeze/resume/clear, processing success and failure, stale-result discard, profile save refusal, delete-all escape hatch, apply compatibility |
+| Display changes | `capture/DisplayChangePolicyTest.kt` | a rotation with unchanged dimensions needs only a rotation update; a changed size needs a resize; the pipeline records and updates its rotation |
+| Canvas geometry | `feature/visionlab/CanvasGeometryTest.kt` | points inside the image map to normalized source coordinates; all four letterbox boundaries are rejected; the image edges themselves are accepted |
+| Canvas hit testing | `feature/visionlab/AnnotationHitTestTest.kt` | the topmost slot wins where rectangles overlap |
+| Vision Lab state | `feature/visionlab/VisionLabViewModelTest.kt` | live frame exposure, freeze/resume/clear, clear cancels in-flight processing, processing success and failure, stale-result discard, profile save/update/apply require a frozen frame, profile save refusal, delete-all escape hatch, apply compatibility |
 | Capture regression | `capture/CaptureStateHolderTest.kt`, `capture/FrameSamplerTest.kt`, `capture/CaptureStartupExecutorTest.kt` | the Sprint 0 capture lifecycle, sampling and startup behaviour still hold |
 | Models | `models/CaptureSessionStateTest.kt`, `permissions/ProjectionPermissionTest.kt` | state machine transitions, consent intent |
 | Detection stubs | `detection/DetectionStubsTest.kt` | the Sprint 0 seams still report `NotImplemented` and never fake a result |

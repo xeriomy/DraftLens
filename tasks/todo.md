@@ -12,18 +12,25 @@
 - [x] Task 8: Compose Vision Lab (`6ad2287`, `45e2f2c`, `691b9d2`)
 - [x] Task 9: Vision documentation (`303b818`, `da35ca0`)
 - [x] Task 10: CI, PR, APK artifact, implementation report
+- [x] Final whole-branch review; findings fixed in `691b9d2` with a failing test each
+- [x] Focused review fixes: display rotation updates, canvas letterbox, clear cancels
+      processing, calibration slot validation, frozen-frame profile policy, docs and CI
+      (`8f046c0`, `313775d`, `007621f`)
 
 Verification for Sprint 1A runs in GitHub Actions (ubuntu-latest, x86_64) because the
 authoring host is aarch64 and AGP's `aapt2` is an x86_64-only binary, so no Gradle task that
 touches resources can run locally. Draft PR: https://github.com/xeriomy/DraftLens/pull/2
 
 Executed commands (CI, `./gradlew`):
-- `./gradlew test` — 167 JVM unit tests, 0 failures, 0 errors, 0 skipped
+- `./gradlew test` — 199 JVM unit tests, 0 failures, 0 errors, 0 skipped
 - `./gradlew assembleAndroidTest` — instrumentation tests compiled, **not executed**
 - `./gradlew lint` — strict lint, `abortOnError = true`
 - `./gradlew assembleDebug` — debug APK, uploaded as the `draftlens-debug` artifact
 
-Final green run: https://github.com/xeriomy/DraftLens/actions/runs/42918290133 (`691b9d2`).
+Latest green run: https://github.com/xeriomy/DraftLens/actions/runs/42926731121
+(head SHA `007621f`). Artifact digest
+`sha256:c8c88e09b2399539107ad3156683ca82d39011263f755fa7681b545ee18ee2ba`; APK SHA-256
+`b13fcc80e816bbdee5a60b4e4f30333bbad347c6f35e2513c9a14f8657dae247`.
 
 Whole-branch review against the plan and spec: eight findings fixed in `691b9d2`, each with a
 test that failed first. The remaining minor findings are listed in the implementation report
