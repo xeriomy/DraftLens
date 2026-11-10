@@ -22,7 +22,7 @@ class DisplayChangePolicyTest {
 
     @Test fun `a changed width alone needs a resize`() {
         assertEquals(
-            DisplayChange.Resize(1080, 1920),
+            DisplayChange.Resize(1200, 1920),
             DisplayChangePolicy.classify(1080, 1920, 1200, 1920),
         )
     }

@@ -16,7 +16,8 @@ Shows the frozen frame when one is pinned, otherwise the latest live frame.
   not displayed. *Resume* releases the pin.
 - *Process Frame* — processes the pinned frame if there is one, otherwise the latest live
   frame at the moment of the press.
-- *Clear* — releases the pinned reference and the processed frame.
+- *Clear* — releases the pinned reference and the processed frame, and cancels any
+  processing that is still in flight so a late result cannot come back.
 
 Nothing is written to disk. Frames live in memory only.
 
@@ -25,12 +26,17 @@ Nothing is written to disk. Frames live in memory only.
 The canvas draws the oriented, uncropped frame inside a dark card.
 
 - Tap a rectangle to select it; tap empty canvas to deselect.
-- Drag inside the selected rectangle to move it. The move is clamped to the frame.
+- Drag inside a rectangle to move it. The move is clamped to the frame.
 - Drag one of the four corner handles to resize.
 - Drag empty canvas to create a rectangle. Drags smaller than `0.01` normalized units in
   either axis are discarded rather than creating an accidental slot.
 - Each rectangle carries a label such as `A-B1`, `E-P2` or `G-B1` — team initial, type
   initial, index.
+
+A touch on a **letterbox band** — the empty area beside the image when its aspect ratio
+does not match the card — is not part of the image. It selects nothing and cannot start a
+drag, so a rectangle is never created or moved onto the band. Once a drag has started on
+the image it keeps following the pointer if it leaves the image.
 
 The overlay never redraws or mutates the source bitmap. Positions are mapped through the
 frame transform, so the overlay stays aligned with the preview.
@@ -73,8 +79,13 @@ sources are never upscaled.
 A calibration profile records a label, the target aspect ratio, the expected orientation and
 the manual slots.
 
-- **Save current annotations** stores the current slots for the displayed frame.
-- **Apply** checks the profile against the displayed frame first. An incompatible profile is
+**Saving, updating and applying a profile all require a frozen frame.** A live frame moves
+under the pointer, so calibrating against one would record the wrong geometry; the controls
+refuse and ask for a freeze instead. The frame that is pinned at that moment is the one
+that gets measured.
+
+- **Save current annotations** stores the current slots for the frozen frame.
+- **Apply** checks the profile against the frozen frame first. An incompatible profile is
   refused and the reason is shown with the expected and actual ratio and orientation.
 - **Update** rewrites the profile with the current slots and label.
 - **Delete** removes one profile, after a confirmation.

@@ -359,6 +359,7 @@ class VisionLabViewModelTest {
         val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
 
         vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.1f, 0.1f, 0.2f, 0.2f))
+        vm.freeze()
         vm.saveProfile("Ranked")
 
         val saved = repository.lastUpserted
@@ -381,6 +382,7 @@ class VisionLabViewModelTest {
         val repository = FakeCalibrationRepository(CalibrationLoadResult.Success(listOf(profile)))
         val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
 
+        vm.freeze()
         vm.applyProfile("p1")
 
         assertTrue(vm.uiState.value.message!!.contains("does not match"))
@@ -410,6 +412,7 @@ class VisionLabViewModelTest {
         val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
 
         vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.6f, 0.6f, 0.7f, 0.7f))
+        vm.freeze()
         vm.applyProfile("p1")
 
         val slots = vm.uiState.value.slots
@@ -441,6 +444,7 @@ class VisionLabViewModelTest {
         val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
 
         vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.6f, 0.6f, 0.7f, 0.7f))
+        vm.freeze()
         vm.applyProfile("p1")
 
         val message = vm.uiState.value.message

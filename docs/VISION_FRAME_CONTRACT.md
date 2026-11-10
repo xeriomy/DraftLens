@@ -86,9 +86,20 @@ acquisition metadata cheaply (`width`, `height`, `displayRotation`, `wallClockTi
 
 `FramePipeline.start(width, height, densityDpi, displayRotation)` passes the rotation into
 every frame it produces. `CaptureSessionService` reads the rotation of
-`DisplayManager.DEFAULT_DISPLAY` at start and at display recreation and maps
+`DisplayManager.DEFAULT_DISPLAY` at capture start and whenever the display changes, and maps
 `Surface.ROTATION_*` to `FrameRotation`; if the display is unavailable it falls back to
 `ROTATION_0` and logs.
+
+The rotation is tracked **independently of the capture size**. A device can rotate while
+the captured content keeps its dimensions, so:
+
+- `CaptureSessionService` watches the default display with a `DisplayManager.DisplayListener`
+  and updates the rotation on every display change, whether or not MediaProjection reports a
+  resize. The listener is unregistered during session cleanup.
+- `FramePipeline` records the current rotation in a field that the image listener reads when
+  a frame is emitted, so a frame never carries a rotation that went stale at start-up.
+- A change in capture size still replaces the ImageReader and the VirtualDisplay; a change
+  in rotation alone does not.
 
 ## Timing
 

@@ -127,3 +127,10 @@ read; it is what the "Delete all calibration data" action calls.
 | Bitmap drawing threw | `RENDER_FAILED` |
 | Calibration document newer than schema 1 | `CalibrationLoadResult.UnsupportedSchema`, writes refused |
 | Calibration document unparseable | `CalibrationLoadResult.Corrupt`, writes refused |
+| Calibration slot with a too-small rectangle, an index below 1, a duplicate id or a duplicate `(type, team, index)` | `CalibrationLoadResult.Corrupt`, writes refused |
+| Two calibration profiles with the same id | `CalibrationLoadResult.Corrupt`, writes refused |
+
+Slot semantics are validated once, in `vision/annotation/SlotValidator`, and used by both
+the annotation codec and the calibration codec. A slot the editor would refuse cannot be
+persisted as calibration data, and a stored document that contains one is reported as
+`Corrupt` and left untouched until it is deleted.
