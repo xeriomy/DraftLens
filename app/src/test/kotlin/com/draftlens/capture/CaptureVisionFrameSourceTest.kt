@@ -6,14 +6,30 @@ import com.draftlens.models.CaptureStatus
 import com.draftlens.vision.model.VisionSourceState
 import com.draftlens.vision.testCapturedFrame
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Before
 import org.junit.Test
 
 class CaptureVisionFrameSourceTest {
+
+    private lateinit var scope: CoroutineScope
+
+    @Before fun setUp() {
+        scope = CoroutineScope(Dispatchers.Unconfined + Job())
+    }
+
+    @After fun tearDown() {
+        scope.cancel()
+    }
 
     private class Harness(
         val adapter: CaptureVisionFrameSource,
@@ -24,20 +40,27 @@ class CaptureVisionFrameSourceTest {
     private fun harness(
         frame: CapturedFrame? = testCapturedFrame(),
         status: CaptureStatus = CaptureStatus.CAPTURING,
-        scope: CoroutineScope,
     ): Harness {
         val frames = MutableStateFlow(frame)
         val capture = MutableStateFlow(CaptureSessionState(status = status))
         return Harness(CaptureVisionFrameSource(frames, capture, scope), frames, capture)
     }
 
-    @Test fun `adapter maps paused capture to paused vision state`() = runTest {
-        val harness = harness(status = CaptureStatus.PAUSED, scope = backgroundScope)
+    /** Waits for the adapter to publish [expected]; the state may arrive on another thread. */
+    private fun awaitState(adapter: CaptureVisionFrameSource, expected: VisionSourceState) {
+        val state = runBlocking {
+            withTimeout(AWAIT_TIMEOUT_MS) { adapter.state.first { it == expected } }
+        }
+        assertEquals(expected, state)
+    }
+
+    @Test fun `adapter maps paused capture to paused vision state`() {
+        val harness = harness(status = CaptureStatus.PAUSED)
         assertEquals(VisionSourceState.PAUSED, harness.adapter.state.value)
         assertEquals("test-frame", harness.adapter.frames.value?.id?.value)
     }
 
-    @Test fun `adapter maps every capture status to a vision state`() = runTest {
+    @Test fun `adapter maps every capture status to a vision state`() {
         val expected = mapOf(
             CaptureStatus.IDLE to VisionSourceState.IDLE,
             CaptureStatus.AWAITING_PERMISSION to VisionSourceState.UNKNOWN,
@@ -47,27 +70,31 @@ class CaptureVisionFrameSourceTest {
             CaptureStatus.STOPPING to VisionSourceState.STOPPED,
             CaptureStatus.ERROR to VisionSourceState.ERROR,
         )
-        val harness = harness(scope = backgroundScope)
+        val harness = harness()
         expected.forEach { (captureStatus, visionState) ->
             harness.capture.value = CaptureSessionState(status = captureStatus)
-            advanceUntilIdle()
-            assertEquals("capture $captureStatus", visionState, harness.adapter.state.value)
+            awaitState(harness.adapter, visionState)
         }
     }
 
-    @Test fun `adapter follows later capture state changes`() = runTest {
-        val harness = harness(scope = backgroundScope)
+    @Test fun `adapter follows later capture state changes`() {
+        val harness = harness()
         harness.capture.value = CaptureSessionState(status = CaptureStatus.ERROR)
-        advanceUntilIdle()
-        assertEquals(VisionSourceState.ERROR, harness.adapter.state.value)
+        awaitState(harness.adapter, VisionSourceState.ERROR)
     }
 
-    @Test fun `adapter publishes the vision frame of the latest capture frame`() = runTest {
-        val harness = harness(scope = backgroundScope)
+    @Test fun `adapter publishes the vision frame of the latest capture frame`() {
+        val harness = harness()
         assertEquals("test-frame", harness.adapter.frames.value?.id?.value)
 
         harness.frames.value = null
-        advanceUntilIdle()
-        assertNull(harness.adapter.frames.value)
+        val cleared = runBlocking {
+            withTimeout(AWAIT_TIMEOUT_MS) { harness.adapter.frames.first { it == null } }
+        }
+        assertNull(cleared)
+    }
+
+    private companion object {
+        const val AWAIT_TIMEOUT_MS = 5_000L
     }
 }
