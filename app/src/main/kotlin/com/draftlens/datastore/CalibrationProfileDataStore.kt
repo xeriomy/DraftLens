@@ -1,6 +1,8 @@
 package com.draftlens.datastore
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -23,13 +25,15 @@ import kotlinx.coroutines.flow.map
  */
 private val Context.calibrationDataStore by preferencesDataStore(name = "draftlens_calibration")
 
-class CalibrationProfileDataStore(private val context: Context) : CalibrationRepository {
+class CalibrationProfileDataStore(private val dataStore: DataStore<Preferences>) : CalibrationRepository {
+
+    constructor(context: Context) : this(context.calibrationDataStore)
 
     private object Keys {
         val PROFILES_JSON = stringPreferencesKey("profiles_json")
     }
 
-    override val profiles: Flow<CalibrationLoadResult> = context.calibrationDataStore.data.map { prefs ->
+    override val profiles: Flow<CalibrationLoadResult> = dataStore.data.map { prefs ->
         val raw = prefs[Keys.PROFILES_JSON] ?: return@map CalibrationLoadResult.Success(emptyList())
         toLoadResult(raw)
     }
@@ -49,7 +53,7 @@ class CalibrationProfileDataStore(private val context: Context) : CalibrationRep
     }
 
     override suspend fun clearDocument(): Result<Unit> = runCatching {
-        context.calibrationDataStore.edit { it.remove(Keys.PROFILES_JSON) }
+        dataStore.edit { it.remove(Keys.PROFILES_JSON) }
     }
 
     /**
@@ -57,7 +61,7 @@ class CalibrationProfileDataStore(private val context: Context) : CalibrationRep
      * failure aborts the edit, so unsupported/corrupt data is never overwritten.
      */
     private suspend fun mutate(transform: (CalibrationDocument) -> CalibrationDocument): Result<Unit> = try {
-        context.calibrationDataStore.edit { prefs ->
+        dataStore.edit { prefs ->
             val document = decode(prefs[Keys.PROFILES_JSON])
             prefs[Keys.PROFILES_JSON] = CalibrationProfileCodec.encodeDocument(transform(document))
         }
