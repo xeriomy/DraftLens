@@ -104,7 +104,7 @@ class VisionLabViewModelTest {
 
     private class EchoPreprocessor : FramePreprocessor {
         override fun process(input: OriginalFrame, request: ProcessFrameRequest): ProcessFrameResult =
-            ProcessFrameResult.Success(processedFrame(input))
+            ProcessFrameResult.Success(buildProcessedFrame(input))
     }
 
     private class FailingPreprocessor : FramePreprocessor {
@@ -126,7 +126,7 @@ class VisionLabViewModelTest {
                 gate.await()
                 firstReturned.countDown()
             }
-            return ProcessFrameResult.Success(processedFrame(input))
+            return ProcessFrameResult.Success(buildProcessedFrame(input))
         }
 
         fun releaseFirst() {
@@ -148,27 +148,6 @@ class VisionLabViewModelTest {
         capturedAtElapsedRealtimeMs = 10_000,
         wallClockTimestampMs = 1_700_000_000_000,
         captureLatencyMs = 4,
-    )
-
-    private fun processedFrame(input: OriginalFrame) = ProcessedFrame(
-        id = FrameId("${input.id.value}-processed"),
-        sourceId = input.id,
-        payload = input.payload,
-        sourceWidth = input.sourceWidth,
-        sourceHeight = input.sourceHeight,
-        displayRotation = input.displayRotation,
-        rotation = input.rotation,
-        capturedAtElapsedRealtimeMs = input.capturedAtElapsedRealtimeMs,
-        wallClockTimestampMs = input.wallClockTimestampMs,
-        transform = FrameTransform.create(
-            sourceWidth = input.sourceWidth,
-            sourceHeight = input.sourceHeight,
-            rotation = input.rotation,
-            crop = null,
-            processedWidth = input.sourceWidth,
-            processedHeight = input.sourceHeight,
-        ),
-        processingDurationMs = 5,
     )
 
     @Test fun `live frame is exposed in the ui state`() = runBlocking {
@@ -354,3 +333,25 @@ class VisionLabViewModelTest {
         assertEquals(NormalizedRect(0.2f, 0.3f, 0.4f, 0.5f), slots.single().rect)
     }
 }
+
+/** Top level so the nested fakes can build a processed frame too. */
+private fun buildProcessedFrame(input: OriginalFrame) = ProcessedFrame(
+    id = FrameId("${input.id.value}-processed"),
+    sourceId = input.id,
+    payload = input.payload,
+    sourceWidth = input.sourceWidth,
+    sourceHeight = input.sourceHeight,
+    displayRotation = input.displayRotation,
+    rotation = input.rotation,
+    capturedAtElapsedRealtimeMs = input.capturedAtElapsedRealtimeMs,
+    wallClockTimestampMs = input.wallClockTimestampMs,
+    transform = FrameTransform.create(
+        sourceWidth = input.sourceWidth,
+        sourceHeight = input.sourceHeight,
+        rotation = input.rotation,
+        crop = null,
+        processedWidth = input.sourceWidth,
+        processedHeight = input.sourceHeight,
+    ),
+    processingDurationMs = 5,
+)
