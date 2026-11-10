@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 when (selectedTab) {
-                    0 -> DebugCaptureScreen(preferences = app.preferences, activity = this)
+                    0 -> DebugCaptureScreen(preferences = app.preferences, activity = this@MainActivity)
                     else -> VisionLabScreen(
                         calibrationRepository = app.calibrationProfiles,
                         source = visionSource,
