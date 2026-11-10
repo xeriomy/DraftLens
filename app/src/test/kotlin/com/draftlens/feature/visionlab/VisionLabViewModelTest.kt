@@ -155,6 +155,84 @@ class VisionLabViewModelTest {
         captureLatencyMs = 4,
     )
 
+    @Test fun `clear cancels in flight processing and drops the late result`() = runBlocking {
+        val source = FakeVisionFrameSource(originalFrame(BLOCKED_FRAME_ID))
+        val preprocessor = BlockingFakePreprocessor()
+        val vm = VisionLabViewModel(source, preprocessor, FakeCalibrationRepository())
+
+        vm.processFrame()
+        assertTrue("the request never reached the preprocessor", preprocessor.awaitEntered())
+
+        vm.clear()
+        preprocessor.releaseFirst()
+        assertTrue("the blocked call never returned", preprocessor.awaitFirstReturned())
+        Thread.sleep(200)
+
+        assertNull("the late result must not come back", vm.uiState.value.processed)
+        assertNull(vm.uiState.value.frozenFrame)
+        assertEquals(ProcessStatus.IDLE, vm.uiState.value.processStatus)
+    }
+
+    @Test fun `save profile requires a frozen frame`() = runBlocking {
+        val source = FakeVisionFrameSource(originalFrame("live"))
+        val repository = FakeCalibrationRepository()
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
+
+        vm.saveProfile("Ranked")
+
+        assertEquals(0, repository.upsertCount)
+        assertTrue("message was: ${vm.uiState.value.message}", vm.uiState.value.message!!.contains("Freeze"))
+    }
+
+    @Test fun `update profile requires a frozen frame`() = runBlocking {
+        val profile = CalibrationProfile(
+            profileId = "p1",
+            label = "Landscape",
+            targetAspectRatio = 16.0 / 9.0,
+            expectedOrientation = OrientationCategory.LANDSCAPE,
+            createdAtMs = 1L,
+            updatedAtMs = 2L,
+        )
+        val source = FakeVisionFrameSource(originalFrame("live"))
+        val repository = FakeCalibrationRepository(CalibrationLoadResult.Success(listOf(profile)))
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
+
+        vm.updateProfile("p1", "Ranked")
+
+        assertEquals(0, repository.upsertCount)
+        assertTrue("message was: ${vm.uiState.value.message}", vm.uiState.value.message!!.contains("Freeze"))
+    }
+
+    @Test fun `apply profile requires a frozen frame`() = runBlocking {
+        val profile = CalibrationProfile(
+            profileId = "p1",
+            label = "Landscape",
+            targetAspectRatio = 16.0 / 9.0,
+            expectedOrientation = OrientationCategory.LANDSCAPE,
+            createdAtMs = 1L,
+            updatedAtMs = 2L,
+        )
+        val source = FakeVisionFrameSource(originalFrame("live"))
+        val repository = FakeCalibrationRepository(CalibrationLoadResult.Success(listOf(profile)))
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
+
+        vm.applyProfile("p1")
+
+        assertTrue("no slot may be applied", vm.uiState.value.slots.isEmpty())
+        assertTrue("message was: ${vm.uiState.value.message}", vm.uiState.value.message!!.contains("Freeze"))
+    }
+
+    @Test fun `a frozen frame satisfies the profile frame requirement`() = runBlocking {
+        val source = FakeVisionFrameSource(originalFrame("live", width = 16, height = 9))
+        val repository = FakeCalibrationRepository()
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
+
+        vm.freeze()
+        vm.saveProfile("Ranked")
+
+        assertEquals(1, repository.upsertCount)
+    }
+
     @Test fun `live frame is exposed in the ui state`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame("live"))
         val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository())

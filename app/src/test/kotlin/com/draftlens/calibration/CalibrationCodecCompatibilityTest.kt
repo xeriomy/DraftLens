@@ -168,4 +168,51 @@ class CalibrationCodecCompatibilityTest {
             CalibrationProfileCodec.decodeDocument(document)
         }
     }
+
+    @Test fun `a slot below the minimum size is rejected`() {
+        assertThrows(CalibrationDocumentException::class.java) {
+            CalibrationProfileCodec.decodeDocument(documentWithSlots(slots = """[{"schemaVersion":1,"id":"s","type":"BAN","team":"ALLY","index":1,"rect":{"left":0.1,"top":0.1,"right":0.104,"bottom":0.104},"label":null}]"""))
+        }
+    }
+
+    @Test fun `a slot index below one is rejected`() {
+        assertThrows(CalibrationDocumentException::class.java) {
+            CalibrationProfileCodec.decodeDocument(documentWithSlots(slots = """[{"schemaVersion":1,"id":"s","type":"BAN","team":"ALLY","index":0,"rect":{"left":0.1,"top":0.1,"right":0.3,"bottom":0.3},"label":null}]"""))
+        }
+    }
+
+    @Test fun `duplicate slot indexes in the same scope are rejected`() {
+        assertThrows(CalibrationDocumentException::class.java) {
+            CalibrationProfileCodec.decodeDocument(documentWithSlots(slots = """[{"schemaVersion":1,"id":"a","type":"BAN","team":"ALLY","index":1,"rect":{"left":0.1,"top":0.1,"right":0.3,"bottom":0.3},"label":null},{"schemaVersion":1,"id":"b","type":"BAN","team":"ALLY","index":1,"rect":{"left":0.4,"top":0.4,"right":0.6,"bottom":0.6},"label":null}]"""))
+        }
+    }
+
+    @Test fun `duplicate slot ids are rejected`() {
+        assertThrows(CalibrationDocumentException::class.java) {
+            CalibrationProfileCodec.decodeDocument(documentWithSlots(slots = """[{"schemaVersion":1,"id":"same","type":"BAN","team":"ALLY","index":1,"rect":{"left":0.1,"top":0.1,"right":0.3,"bottom":0.3},"label":null},{"schemaVersion":1,"id":"same","type":"PICK","team":"ENEMY","index":2,"rect":{"left":0.4,"top":0.4,"right":0.6,"bottom":0.6},"label":null}]"""))
+        }
+    }
+
+    @Test fun `duplicate profile ids are rejected`() {
+        val document = """{"schemaVersion":1,"profiles":[{"schemaVersion":1,"profileId":"same","label":null,"targetAspectRatio":1.7778,"expectedOrientation":"LANDSCAPE","createdAtMs":1,"updatedAtMs":2,"slots":[]},{"schemaVersion":1,"profileId":"same","label":null,"targetAspectRatio":1.7778,"expectedOrientation":"LANDSCAPE","createdAtMs":1,"updatedAtMs":2,"slots":[]}]}"""
+        assertThrows(CalibrationDocumentException::class.java) {
+            CalibrationProfileCodec.decodeDocument(document)
+        }
+    }
+
+    @Test fun `encoding a profile with an unusable slot is rejected`() {
+        val badSlot = DraftSlot(
+            id = "s1",
+            type = SlotType.BAN,
+            team = SlotTeam.ALLY,
+            index = 1,
+            rect = NormalizedRect(0.1f, 0.1f, 0.104f, 0.104f),
+        )
+        assertThrows(CalibrationDocumentException::class.java) {
+            CalibrationProfileCodec.encodeDocument(CalibrationDocument(profiles = listOf(profile().copy(slots = listOf(badSlot)))))
+        }
+    }
+
+    private fun documentWithSlots(slots: String): String =
+        """{"schemaVersion":1,"profiles":[{"schemaVersion":1,"profileId":"p","label":null,"targetAspectRatio":1.7778,"expectedOrientation":"LANDSCAPE","createdAtMs":1,"updatedAtMs":2,"slots":$slots}]}"""
 }

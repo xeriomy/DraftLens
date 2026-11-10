@@ -111,6 +111,17 @@ class CalibrationProfileDataStoreTest {
         assertEquals(raw, readRaw())
     }
 
+    @Test fun `a stored document with an unusable slot is corrupt and is not replaced`() = runTest {
+        val raw = """{"schemaVersion":1,"profiles":[{"schemaVersion":1,"profileId":"p1","label":null,"targetAspectRatio":1.7778,"expectedOrientation":"LANDSCAPE","createdAtMs":1,"updatedAtMs":2,"slots":[{"schemaVersion":1,"id":"s1","type":"BAN","team":"ALLY","index":1,"rect":{"left":0.1,"top":0.1,"right":0.104,"bottom":0.104},"label":null}]}]}"""
+        writeRaw(raw)
+
+        val result = repository.profiles.first()
+        assertTrue("expected Corrupt but was $result", result is CalibrationLoadResult.Corrupt)
+
+        assertTrue(repository.upsert(profile()).isFailure)
+        assertEquals(raw, readRaw())
+    }
+
     @Test fun `clear document is the escape route out of an unsupported document`() = runTest {
         writeRaw("""{"schemaVersion":2,"profiles":[]}""")
 
