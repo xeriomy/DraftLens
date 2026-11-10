@@ -31,6 +31,21 @@ jobs:
       - name: Run unit tests
         run: ./gradlew test --stacktrace
 
+      - name: Summarize unit tests
+        run: |
+          total=0; failures=0; errors=0; skipped=0
+          for f in app/build/test-results/testDebugUnitTest/TEST-*.xml; do
+            [ -e "$f" ] || continue
+            t=$(grep -o 'tests="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+            fl=$(grep -o 'failures="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+            er=$(grep -o 'errors="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+            sk=$(grep -o 'skipped="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+            total=$((total + ${t:-0})); failures=$((failures + ${fl:-0}))
+            errors=$((errors + ${er:-0})); skipped=$((skipped + ${sk:-0}))
+          done
+          echo "unit tests: $total, failures: $failures, errors: $errors, skipped: $skipped"
+          if [ "$failures" -ne 0 ] || [ "$errors" -ne 0 ]; then exit 1; fi
+
       - name: Compile instrumentation tests
         run: ./gradlew assembleAndroidTest --stacktrace
 
