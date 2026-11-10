@@ -32,23 +32,33 @@ host is aarch64 and AGP 8.6.1 publishes only an x86_64 `aapt2`, so no Gradle tas
 touches resources can run there — verified as
 `Cannot run program ".../aapt2": error=2`. CI is the build of record.
 
-| CI run | Commit | Result |
-|---|---|---|
-| `42905335945` | `34ebb10` | success — baseline before this sprint's work |
-| `42905781209` | `b84b69f` | failure (expected) — Task 6 red: the new store test could not compile |
-| `42906245805` | `85f04c8` | success — Task 6 green |
-| `42906470342` | `473b632` | failure (expected) — Task 7 red: the seam and ViewModel did not exist |
-| `42907112482` | `fedaa4e` | failure — nested test fakes could not reach an outer helper |
-| `42907516553` | `82c330a` | failure — `advanceUntilIdle` does not drive `backgroundScope` collectors |
-| `42907916398` | `0c7d286` | failure — the stale-result fake blocked by call order while the two jobs race |
-| `42908409411` | `606206d` | failure — the first request can be cancelled before it reaches the preprocessor |
-| `42908944687` | `b4c8c78` | success — Task 7 green, 167 tests, 0 failures |
+**Final green run:** <https://github.com/xeriomy/DraftLens/actions/runs/42918290133>
+(commit `691b9d2`, 2026-11-10).
 
-Green run tasks: `./gradlew test` (167 tests, 0 failures, 0 errors, 0 skipped),
+| CI run | Commit | Result | What it showed |
+|---|---|---|---|
+| `42905335945` | `34ebb10` | success | baseline before this sprint's work |
+| `42905781209` | `b84b69f` | failure (expected) | Task 6 red: the store had no injectable constructor |
+| `42906245805` | `85f04c8` | success | Task 6 green |
+| `42906470342` | `473b632` | failure (expected) | Task 7 red: the seam and ViewModel did not exist |
+| `42907112482` | `fedaa4e` | failure | nested test fakes could not reach an outer helper |
+| `42907516553` | `82c330a` | failure | `advanceUntilIdle` does not drive `backgroundScope` collectors |
+| `42907916398` | `0c7d286` | failure | the stale-result fake blocked by call order while the two jobs race |
+| `42908409411` | `606206d` | failure | the first request can be cancelled before it reaches the preprocessor |
+| `42908944687` | `b4c8c78` | success | Task 7 green |
+| `42909440502` | `303b818` | failure | `MainActivity`: `this` resolved to `ColumnScope`, not the Activity |
+| `42909895639` | `45e2f2c` | success | Task 8 green — Vision Lab UI compiles, lints and assembles |
+| `42917700880` | `90cb807` | failure (expected) | review-fix red: the new pins had no implementation |
+| `42918290133` | `691b9d2` | **success** | final green: 354 test executions (167 tests in both the debug and release variants), 0 failures |
+
+Green run tasks: `./gradlew test` (167 unit tests, 0 failures, 0 errors, 0 skipped),
 `./gradlew assembleAndroidTest`, `./gradlew lint` (strict, `abortOnError = true`),
 `./gradlew assembleDebug`, APK uploaded as the `draftlens-debug` artifact, and the packaged
 manifest re-inspected for the foreground-service permissions and the `mediaProjection`
 service type.
+
+**APK artifact:** `draftlens-debug`, from run `42918290133`
+(<https://github.com/xeriomy/DraftLens/actions/runs/42918290133> → Artifacts).
 
 **Instrumentation tests were compiled, not executed.** No device and no emulator was
 available.
