@@ -39,15 +39,29 @@ class FramePipeline(
     var displayHeight: Int = 0
         private set
 
+    /**
+     * The device display rotation recorded on every frame. Updated independently of the
+     * ImageReader size, so a rotation that leaves the capture size unchanged is still
+     * reflected on the next frame.
+     */
+    var displayRotation: FrameRotation = FrameRotation.ROTATION_0
+        private set
+
+    /** Records a new display rotation without touching the ImageReader. */
+    fun updateDisplayRotation(rotation: FrameRotation) {
+        displayRotation = rotation
+    }
+
     fun start(
         width: Int,
         height: Int,
         densityDpi: Int,
-        displayRotation: FrameRotation = FrameRotation.ROTATION_0
+        initialDisplayRotation: FrameRotation = FrameRotation.ROTATION_0
     ) {
         stopInternal(release = true)
         displayWidth = width
         displayHeight = height
+        displayRotation = initialDisplayRotation
         handlerThread = HandlerThread("draftlens-capture").also { it.start() }
         val handler = Handler(handlerThread!!.looper)
 
@@ -149,7 +163,7 @@ class FramePipeline(
         newWidth: Int,
         newHeight: Int,
         densityDpi: Int,
-        displayRotation: FrameRotation = FrameRotation.ROTATION_0
+        initialDisplayRotation: FrameRotation = FrameRotation.ROTATION_0
     ): SurfaceSwitch? {
         if (newWidth == displayWidth && newHeight == displayHeight) return null
         val previousSurface = surface
@@ -166,7 +180,7 @@ class FramePipeline(
         displayHeight = 0
 
         try {
-            start(newWidth, newHeight, densityDpi, displayRotation)
+            start(newWidth, newHeight, densityDpi, initialDisplayRotation)
         } catch (e: Exception) {
             // Discard partially created replacement resources and restore the previous session.
             runCatching { surface?.release() }

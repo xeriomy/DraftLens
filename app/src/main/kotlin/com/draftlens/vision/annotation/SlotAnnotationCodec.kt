@@ -51,31 +51,6 @@ object SlotAnnotationCodec {
     }
 
     private fun validateSlots(slots: List<DraftSlot>) {
-        for (slot in slots) {
-            if (slot.rect.width < MIN_SIZE || slot.rect.height < MIN_SIZE) {
-                throw SlotCodecException("Slot '${slot.id}' rectangle is below the minimum size of $MIN_SIZE in one axis.")
-            }
-            if (slot.index < 1) {
-                throw SlotCodecException("Slot '${slot.id}' index must be at least 1, was ${slot.index}.")
-            }
-        }
-        slots
-            .groupBy { it.id }
-            .filterValues { it.size > 1 }
-            .keys
-            .firstOrNull()
-            ?.let { id ->
-                throw SlotCodecException("Duplicate slot id '$id' in annotation data.")
-            }
-        slots
-            .groupBy { Triple(it.type, it.team, it.index) }
-            .filterValues { it.size > 1 }
-            .keys
-            .firstOrNull()
-            ?.let { (type, team, index) ->
-                throw SlotCodecException("Duplicate index $index for $type/$team in annotation data.")
-            }
+        SlotValidator.findProblem(slots, "annotation data")?.let { throw SlotCodecException(it) }
     }
-
-    private const val MIN_SIZE = 0.01f
 }

@@ -53,6 +53,7 @@ class CaptureSessionService : Service() {
 
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
+    private var displayListener: DisplayManager.DisplayListener? = null
     private var captureJob: Job? = null
     private var frameJob: Job? = null
     private var foregroundPromoted = false
@@ -166,6 +167,7 @@ class CaptureSessionService : Service() {
 
                         pipeline.start(captureWidth, captureHeight, dpi, displayRotation)
                         createVirtualDisplay(proj, captureWidth, captureHeight, dpi)
+                        registerDisplayListener()
                         CaptureStateHolder.beginCapture(captureWidth, captureHeight, dpi)
                         collectFrames()
                     }
@@ -288,24 +290,79 @@ class CaptureSessionService : Service() {
             return
         }
         if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING) return
-        if (width == CaptureStateHolder.state.value.displayWidth &&
-            height == CaptureStateHolder.state.value.displayHeight
-        ) {
-            return
-        }
 
+        val displayRotation = currentDisplayRotation()
+        val change = DisplayChangePolicy.classify(
+            CaptureStateHolder.state.value.displayWidth,
+            CaptureStateHolder.state.value.displayHeight,
+            width,
+            height,
+        )
+        when (change) {
+            is DisplayChange.RotationOnly -> {
+                // The capture size is unchanged: only the rotation metadata needs updating.
+                updateDisplayRotation(displayRotation)
+                Log.i(TAG, "Display rotation updated to $displayRotation without resizing")
+            }
+
+            is DisplayChange.Resize -> {
+                try {
+                    val replacement = pipeline.prepareResize(width, height, densityDpi, displayRotation) ?: return
+                    // Caller owns cleanup after detach; VirtualDisplay must not retain a released Surface.
+                    display.setSurface(null)
+                    replacement.closePrevious()
+                    display.setSurface(replacement.surface)
+                    display.resize(width, height, densityDpi)
+                    CaptureStateHolder.updateDisplay(width, height, densityDpi)
+                    Log.i(TAG, "VirtualDisplay resized (${width}x${height}, ${densityDpi}dpi)")
+                } catch (e: Exception) {
+                    failProjectionSession("Failed to resize VirtualDisplay", e)
+                }
+            }
+        }
+    }
+
+    /**
+     * Records a new device orientation on the pipeline, independently of any resize.
+     * The pixel correction stays [FrameRotation.ROTATION_0]: MediaProjection buffers are
+     * already display-oriented, so the rotation is metadata, never a transform.
+     */
+    private fun updateDisplayRotation(rotation: FrameRotation) {
+        pipeline.updateDisplayRotation(rotation)
+    }
+
+    /**
+     * Watches the default display so an orientation change is picked up even when the
+     * captured content keeps its size and MediaProjection reports no resize.
+     */
+    private fun registerDisplayListener() {
+        val manager = getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager ?: return
+        val listener = object : DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) = Unit
+            override fun onDisplayRemoved(displayId: Int) = Unit
+
+            override fun onDisplayChanged(displayId: Int) {
+                if (displayId == Display.DEFAULT_DISPLAY) {
+                    updateDisplayRotation(currentDisplayRotation())
+                }
+            }
+        }
         try {
-            val displayRotation = currentDisplayRotation()
-            val replacement = pipeline.prepareResize(width, height, densityDpi, displayRotation) ?: return
-            // Caller owns cleanup after detach; VirtualDisplay must not retain a released Surface.
-            display.setSurface(null)
-            replacement.closePrevious()
-            display.setSurface(replacement.surface)
-            display.resize(width, height, densityDpi)
-            CaptureStateHolder.updateDisplay(width, height, densityDpi)
-            Log.i(TAG, "VirtualDisplay resized (${width}x${height}, ${densityDpi}dpi)")
+            manager.registerDisplayListener(listener, null)
+            displayListener = listener
         } catch (e: Exception) {
-            failProjectionSession("Failed to resize VirtualDisplay", e)
+            Log.w(TAG, "Display listener registration failed", e)
+        }
+    }
+
+    private fun unregisterDisplayListener() {
+        val listener = displayListener ?: return
+        displayListener = null
+        try {
+            (getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
+                ?.unregisterDisplayListener(listener)
+        } catch (e: Exception) {
+            Log.w(TAG, "Display listener unregister failed", e)
         }
     }
 
@@ -331,6 +388,7 @@ class CaptureSessionService : Service() {
         frameJob = null
         try { virtualDisplay?.release() } catch (e: Exception) { Log.w(TAG, "VirtualDisplay release failed", e) }
         virtualDisplay = null
+        unregisterDisplayListener()
         try {
             projection?.unregisterCallback(projectionCallback)
             projection?.stop()

@@ -172,6 +172,6 @@ class SlotAnnotationStore(
 
     companion object {
         /** Minimum normalized size of a slot rectangle, in both axes. */
-        const val MIN_SIZE = 0.01f
+        const val MIN_SIZE = SlotValidator.MIN_SIZE
     }
 }

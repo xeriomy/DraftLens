@@ -1,5 +1,6 @@
 package com.draftlens.vision.calibration
 
+import com.draftlens.vision.annotation.SlotValidator
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 
@@ -44,18 +45,23 @@ object CalibrationProfileCodec {
                 "Unsupported calibration schema version ${document.schemaVersion}. Expected ${CalibrationSchema.CURRENT}.",
             )
         }
+        document.profiles.groupBy { it.profileId }
+            .filterValues { it.size > 1 }
+            .keys
+            .firstOrNull()
+            ?.let { id ->
+                throw CalibrationDocumentException("Duplicate calibration profile id '$id'.")
+            }
         document.profiles.forEach { profile ->
             if (profile.schemaVersion != CalibrationSchema.CURRENT) {
                 throw UnsupportedCalibrationSchemaException(
                     "Unsupported calibration profile schema version ${profile.schemaVersion} for profile '${profile.profileId}'. Expected ${CalibrationSchema.CURRENT}.",
                 )
             }
-            profile.slots.forEach { slot ->
-                if (slot.schemaVersion != CalibrationSchema.CURRENT) {
-                    throw UnsupportedCalibrationSchemaException(
-                        "Unsupported slot schema version ${slot.schemaVersion} for slot '${slot.id}'. Expected ${CalibrationSchema.CURRENT}.",
-                    )
-                }
+            profile.slots.firstOrNull { it.schemaVersion != CalibrationSchema.CURRENT }?.let { slot ->
+                throw UnsupportedCalibrationSchemaException(
+                    "Unsupported slot schema version ${slot.schemaVersion} for slot '${slot.id}'. Expected ${CalibrationSchema.CURRENT}.",
+                )
             }
             if (profile.profileId.isBlank()) {
                 throw CalibrationDocumentException("Calibration profile id must not be blank.")
@@ -64,6 +70,9 @@ object CalibrationProfileCodec {
                 throw CalibrationDocumentException(
                     "Calibration profile '${profile.profileId}' target aspect ratio must be finite and positive, was ${profile.targetAspectRatio}.",
                 )
+            }
+            SlotValidator.findProblem(profile.slots, "calibration data")?.let {
+                throw CalibrationDocumentException(it)
             }
         }
     }

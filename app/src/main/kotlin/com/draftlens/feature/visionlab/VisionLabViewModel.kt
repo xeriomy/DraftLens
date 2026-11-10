@@ -75,8 +75,14 @@ class VisionLabViewModel(
         _uiState.update { it.copy(frozenFrame = null) }
     }
 
-    /** Releases the pinned reference and the processed frame. */
+    /**
+     * Releases the pinned reference and the processed frame, and cancels any processing
+     * that is still in flight so a late result cannot restore itself.
+     */
     fun clear() {
+        generation.incrementAndGet()
+        processingJob?.cancel()
+        processingJob = null
         _uiState.update {
             it.copy(frozenFrame = null, processed = null, processStatus = ProcessStatus.IDLE, processError = null)
         }
@@ -198,7 +204,7 @@ class VisionLabViewModel(
             _uiState.update { it.copy(message = UNSUPPORTED_SCHEMA_MESSAGE) }
             return
         }
-        val frame = state.displayFrame
+        val frame = state.frozenFrame
         if (frame == null) {
             _uiState.update { it.copy(message = "Freeze a frame before saving a profile") }
             return
@@ -229,7 +235,7 @@ class VisionLabViewModel(
             return
         }
         val existing = profiles.firstOrNull { it.profileId == profileId } ?: return
-        val frame = state.displayFrame
+        val frame = state.frozenFrame
         if (frame == null) {
             _uiState.update { it.copy(message = "Freeze a frame before updating a profile") }
             return
@@ -272,7 +278,7 @@ class VisionLabViewModel(
             return
         }
         val profile = profiles.firstOrNull { it.profileId == profileId } ?: return
-        val frame = state.displayFrame
+        val frame = state.frozenFrame
         if (frame == null) {
             _uiState.update { it.copy(message = "Freeze a frame before applying a profile") }
             return

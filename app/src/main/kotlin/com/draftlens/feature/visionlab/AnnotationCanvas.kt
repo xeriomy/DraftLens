@@ -28,14 +28,10 @@ import androidx.compose.ui.unit.sp
 import com.draftlens.vision.annotation.DraftSlot
 import com.draftlens.vision.annotation.SlotTeam
 import com.draftlens.vision.annotation.SlotType
-import com.draftlens.vision.geometry.FloatPoint
-import com.draftlens.vision.geometry.FrameTransform
 import com.draftlens.vision.geometry.NormalizedPoint
 import com.draftlens.vision.geometry.NormalizedRect
-import com.draftlens.vision.model.FrameRotation
 import com.draftlens.vision.model.OriginalFrame
 import com.draftlens.vision.model.android.BitmapFramePayload
-import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -116,16 +112,20 @@ fun AnnotationCanvas(
                         val geo = geometry ?: return@detectDragGestures
                         when (val current = gesture) {
                             is CanvasGesture.Move -> {
-                                val point = geo.canvasToNormalized(change.position, fitted) ?: return@detectDragGestures
+                                // Clamped so a drag that leaves the image keeps following the pointer.
+                                val point = geo.canvasToNormalizedClamped(change.position, fitted)
+                                    ?: return@detectDragGestures
                                 onMove(current.slotId, point.x - current.last.x, point.y - current.last.y)
                                 gesture = current.copy(last = point)
                             }
                             is CanvasGesture.Resize -> {
-                                val point = geo.canvasToNormalized(change.position, fitted) ?: return@detectDragGestures
+                                val point = geo.canvasToNormalizedClamped(change.position, fitted)
+                                    ?: return@detectDragGestures
                                 resizeRect(current.start, current.handle, point)?.let { onResize(current.slotId, it) }
                             }
                             is CanvasGesture.Create -> {
-                                val point = geo.canvasToNormalized(change.position, fitted) ?: return@detectDragGestures
+                                val point = geo.canvasToNormalized(change.position, fitted)
+                                    ?: return@detectDragGestures
                                 gesture = current.copy(current = point)
                                 pending = Rect(
                                     min(current.start.x, point.x),
@@ -229,91 +229,6 @@ private sealed interface CanvasGesture {
     data class Move(val slotId: String, val last: NormalizedPoint) : CanvasGesture
     data class Resize(val slotId: String, val handle: Corner, val start: NormalizedRect) : CanvasGesture
     data class Create(val start: NormalizedPoint, val current: NormalizedPoint) : CanvasGesture
-}
-
-private enum class Corner { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT }
-
-/**
- * Frame geometry for the canvas: the transform between source pixels and the oriented
- * image the user annotates.
- */
-private data class CanvasGeometry(
-    val transform: FrameTransform,
-    val rotation: FrameRotation,
-    val sourceWidth: Int,
-    val sourceHeight: Int,
-    val orientedWidth: Int,
-    val orientedHeight: Int,
-) {
-    companion object {
-        fun of(frame: OriginalFrame): CanvasGeometry {
-            val swapsAxes =
-                frame.rotation == FrameRotation.ROTATION_90 || frame.rotation == FrameRotation.ROTATION_270
-            val orientedWidth = if (swapsAxes) frame.sourceHeight else frame.sourceWidth
-            val orientedHeight = if (swapsAxes) frame.sourceWidth else frame.sourceHeight
-            return CanvasGeometry(
-                transform = FrameTransform.create(
-                    sourceWidth = frame.sourceWidth,
-                    sourceHeight = frame.sourceHeight,
-                    rotation = frame.rotation,
-                    crop = null,
-                    processedWidth = orientedWidth,
-                    processedHeight = orientedHeight,
-                ),
-                rotation = frame.rotation,
-                sourceWidth = frame.sourceWidth,
-                sourceHeight = frame.sourceHeight,
-                orientedWidth = orientedWidth,
-                orientedHeight = orientedHeight,
-            )
-        }
-    }
-
-    fun normalizedToCanvas(rect: NormalizedRect, fitted: Rect): Rect =
-        normalizedToCanvas(rect.left, rect.top, rect.right, rect.bottom, fitted)
-
-    fun normalizedToCanvas(left: Float, top: Float, right: Float, bottom: Float, fitted: Rect): Rect {
-        val topLeft = transform.sourceToOriented(FloatPoint(left * sourceWidth, top * sourceHeight))
-        val bottomRight = transform.sourceToOriented(FloatPoint(right * sourceWidth, bottom * sourceHeight))
-        val orientedLeft = min(topLeft.x, bottomRight.x)
-        val orientedTop = min(topLeft.y, bottomRight.y)
-        val orientedRight = max(topLeft.x, bottomRight.x)
-        val orientedBottom = max(topLeft.y, bottomRight.y)
-        return Rect(
-            left = fitted.left + orientedLeft / orientedWidth * fitted.width,
-            top = fitted.top + orientedTop / orientedHeight * fitted.height,
-            right = fitted.left + orientedRight / orientedWidth * fitted.width,
-            bottom = fitted.top + orientedBottom / orientedHeight * fitted.height,
-        )
-    }
-
-    fun canvasToNormalized(offset: Offset, fitted: Rect): NormalizedPoint? {
-        if (fitted.width <= 0f || fitted.height <= 0f) return null
-        val oriented = FloatPoint(
-            (offset.x - fitted.left) / fitted.width * orientedWidth,
-            (offset.y - fitted.top) / fitted.height * orientedHeight,
-        )
-        val source = transform.orientedToSource(oriented)
-        return NormalizedPoint(
-            x = (source.x / sourceWidth).coerceIn(0f, 1f),
-            y = (source.y / sourceHeight).coerceIn(0f, 1f),
-        )
-    }
-
-    /** Corner handle under the pointer, if any. */
-    fun handleAt(rect: NormalizedRect, offset: Offset, fitted: Rect, radius: Float): Corner? {
-        val bounds = normalizedToCanvas(rect, fitted)
-        val touch = radius * 2f
-        val corners = listOf(
-            Corner.TOP_LEFT to bounds.topLeft,
-            Corner.TOP_RIGHT to Offset(bounds.right, bounds.top),
-            Corner.BOTTOM_LEFT to Offset(bounds.left, bounds.bottom),
-            Corner.BOTTOM_RIGHT to bounds.bottomRight,
-        )
-        return corners.firstOrNull { (_, corner) ->
-            abs(corner.x - offset.x) <= touch && abs(corner.y - offset.y) <= touch
-        }?.first
-    }
 }
 
 /** Minimum normalized size the store accepts; smaller drags are discarded. */
