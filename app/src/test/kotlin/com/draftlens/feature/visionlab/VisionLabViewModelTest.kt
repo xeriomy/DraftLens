@@ -341,6 +341,50 @@ class VisionLabViewModelTest {
         assertEquals(NormalizedRect(0.2f, 0.3f, 0.4f, 0.5f), slots.single().rect)
     }
 
+    @Test fun `apply profile the store would reject does not report success`() = runBlocking {
+        val tooSmall = com.draftlens.vision.annotation.DraftSlot(
+            id = "s1",
+            type = SlotType.PICK,
+            team = SlotTeam.ENEMY,
+            index = 2,
+            rect = NormalizedRect(0.1f, 0.1f, 0.104f, 0.104f),
+        )
+        val profile = CalibrationProfile(
+            profileId = "p1",
+            label = "Too small",
+            targetAspectRatio = 16.0 / 9.0,
+            expectedOrientation = OrientationCategory.LANDSCAPE,
+            createdAtMs = 1L,
+            updatedAtMs = 2L,
+            slots = listOf(tooSmall),
+        )
+        val source = FakeVisionFrameSource(originalFrame("live", width = 16, height = 9))
+        val repository = FakeCalibrationRepository(CalibrationLoadResult.Success(listOf(profile)))
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
+
+        vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.6f, 0.6f, 0.7f, 0.7f))
+        vm.applyProfile("p1")
+
+        val message = vm.uiState.value.message
+        assertNotNull("a rejected profile must say so", message)
+        assertTrue("message was: $message", message!!.contains("too small"))
+        assertEquals("the existing slot must survive", 1, vm.uiState.value.slots.size)
+    }
+
+    @Test fun `slot index that duplicates another slot in the same scope is rejected`() = runBlocking {
+        val source = FakeVisionFrameSource(originalFrame("live"))
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository())
+
+        vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.1f, 0.1f, 0.2f, 0.2f))
+        vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.4f, 0.4f, 0.5f, 0.5f))
+        val second = vm.uiState.value.slots[1]
+
+        val result = vm.updateSlotIndex(second.id, 1)
+
+        assertTrue("the duplicate index must be reported", result.isFailure)
+        assertEquals(2, vm.uiState.value.slots[1].index)
+    }
+
     private companion object {
         /** The frame id whose processing call the fake blocks. */
         const val BLOCKED_FRAME_ID = "first"

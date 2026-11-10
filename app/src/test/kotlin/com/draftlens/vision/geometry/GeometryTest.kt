@@ -38,6 +38,52 @@ class GeometryTest {
         assertNear(point, transform.processedToSource(transform.sourceToProcessed(point)), 1.0f)
     }
 
+    @Test fun `cropped downscaled 180 degree transform round trips`() {
+        val transform = FrameTransform.create(
+            sourceWidth = 1000, sourceHeight = 500,
+            rotation = FrameRotation.ROTATION_180,
+            crop = NormalizedRect(0.1f, 0.2f, 0.9f, 0.8f),
+            processedWidth = 160, processedHeight = 60,
+        )
+        val point = FloatPoint(123f, 210f)
+        assertNear(point, transform.processedToSource(transform.sourceToProcessed(point)), 1.0f)
+    }
+
+    @Test fun `cropped downscaled 270 degree transform round trips`() {
+        val transform = FrameTransform.create(
+            sourceWidth = 1000, sourceHeight = 500,
+            rotation = FrameRotation.ROTATION_270,
+            crop = NormalizedRect(0.1f, 0.2f, 0.9f, 0.8f),
+            processedWidth = 160, processedHeight = 240,
+        )
+        val point = FloatPoint(123f, 210f)
+        assertNear(point, transform.processedToSource(transform.sourceToProcessed(point)), 1.0f)
+    }
+
+    @Test fun `cropped downscaled rects round trip for every rotation`() {
+        val crop = NormalizedRect(0.1f, 0.2f, 0.9f, 0.8f)
+        val cases = listOf(
+            FrameRotation.ROTATION_0 to (160 to 60),
+            FrameRotation.ROTATION_90 to (160 to 240),
+            FrameRotation.ROTATION_180 to (160 to 60),
+            FrameRotation.ROTATION_270 to (160 to 240),
+        )
+        cases.forEach { (rotation, output) ->
+            val transform = FrameTransform.create(
+                sourceWidth = 1000, sourceHeight = 500,
+                rotation = rotation, crop = crop,
+                processedWidth = output.first, processedHeight = output.second,
+            )
+            val rect = NormalizedRect(0.3f, 0.4f, 0.6f, 0.7f)
+            val processed = transform.sourceNormalizedRectToProcessedPixelRect(rect)
+            val back = transform.processedPixelRectToSourceNormalizedRect(processed)
+            assertNear(rect.left, back.left, 0.02f)
+            assertNear(rect.top, back.top, 0.02f)
+            assertNear(rect.right, back.right, 0.02f)
+            assertNear(rect.bottom, back.bottom, 0.02f)
+        }
+    }
+
     @Test fun `portrait and landscape dimensions follow rotation`() {
         val landscape = FrameTransform.create(
             sourceWidth = 1000, sourceHeight = 500,
@@ -262,5 +308,9 @@ class GeometryTest {
     private fun assertNear(expected: FloatPoint, actual: FloatPoint, tolerance: Float) {
         assertEquals(expected.x, actual.x, tolerance)
         assertEquals(expected.y, actual.y, tolerance)
+    }
+
+    private fun assertNear(expected: Float, actual: Float, tolerance: Float) {
+        assertEquals(expected, actual, tolerance)
     }
 }
