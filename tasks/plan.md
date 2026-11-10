@@ -1,4 +1,29 @@
-# Implementation Plan: DraftLens Sprint 0 — Android Foundation & Live Capture PoC
+# Implementation Plan: DraftLens
+
+## Sprint 1A — Vision Foundation, Preprocessing & Vision Lab
+**Objective:** Give the app a real image-bearing foundation — non-null frames, tested
+geometry, validated preprocessing, manual slot annotation, a Vision Lab, and versioned
+calibration profiles. No recognition, no recommendations, no overlays.
+
+### Work items in order
+- [x] Task 1: Vision model and geometry value types (`a2731d3`)
+- [x] Task 2: Rotation-aware geometry and round trips (`357a40f`)
+- [x] Task 3: Non-null capture frames plus display rotation (`8e1381a`)
+- [x] Task 4: Validated preprocessing engine (`79bd211`, `41aa126`, `b81e740`)
+- [x] Task 5: Manual slot annotations and JSON codec (`1086b75`, `cab3d8d`)
+- [x] Task 6: Versioned calibration profiles (`08ca414` reviewed, completed in `b84b69f`, `85f04c8`)
+- [x] Task 7: Vision frame source and ViewModel (`fedaa4e`, `ec24a9a`, `0c7d286`)
+- [x] Task 8: Compose Vision Lab (tab host, preview, canvas, slot editor, profile controls)
+- [x] Task 9: Vision documentation (`docs/VISION_*.md`, README, ARCHITECTURE)
+- [x] Task 10: CI, PR, APK artifact, implementation report
+
+### Sprint 1A verification
+CI (GitHub Actions, ubuntu-latest x86_64) is the build of record: `test`,
+`assembleAndroidTest`, `lint`, `assembleDebug`, plus a `draftlens-debug` APK artifact.
+The authoring host is aarch64 and AGP 8.6.1 ships only an x86_64 `aapt2`, so no Gradle
+task that touches resources can run there. Instrumentation tests are compiled, not executed:
+no device or emulator was available. Physical-device verification of the Vision Lab is
+**pending**.
 
 ## Sprint 0.1 — Capture Hardening & Technical Cleanup
 **Objective:** Harden the reported-working capture path before Vision Engine. No recognition,

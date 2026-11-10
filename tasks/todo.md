@@ -1,20 +1,30 @@
 # Sprint 0 Task List
 
-## Sprint 1A: Vision Foundation (in progress)
+## Sprint 1A: Vision Foundation
 - [x] Task 1: Vision model and geometry value types (`a2731d3`)
 - [x] Task 2: Rotation-aware geometry and round trips (`357a40f`)
 - [x] Task 3: Non-null capture frames plus display rotation (`8e1381a`)
 - [x] Task 4: Validated preprocessing engine (`79bd211`, `41aa126`, `b81e740`)
 - [x] Task 5: Manual slot annotations and JSON codec (`1086b75`, `cab3d8d`)
-- [ ] Task 6: Versioned calibration profiles — WIP `08ca414`, unreviewed and untested
-- [ ] Task 7: Vision frame source and ViewModel
-- [ ] Task 8: Compose Vision Lab
-- [ ] Task 9: Vision documentation
-- [ ] Task 10: CI, PR, APK artifact, implementation report
+- [x] Task 6: Versioned calibration profiles — WIP `08ca414` reviewed and completed in
+      `b84b69f` + `85f04c8` (red CI `42905781209`, green CI `42906245805`)
+- [x] Task 7: Vision frame source and ViewModel (`fedaa4e`, `ec24a9a`)
+- [x] Task 8: Compose Vision Lab
+- [x] Task 9: Vision documentation
+- [x] Task 10: CI, PR, APK artifact, implementation report
 
-Resume from `docs/superpowers/plans/2026-11-06-sprint-1a-vision-foundation.md`,
-section "Execution Checkpoint (2026-11-06)". Last verified unit-suite state: `cab3d8d`
-(127/127 tests). No PR or CI run exists yet for this branch.
+Verification for Sprint 1A runs in GitHub Actions (ubuntu-latest, x86_64) because the
+authoring host is aarch64 and AGP's `aapt2` is an x86_64-only binary, so no Gradle task that
+touches resources can run locally. Draft PR: https://github.com/xeriomy/DraftLens/pull/2
+
+Executed commands (CI, `./gradlew`):
+- `./gradlew test` — JVM unit tests
+- `./gradlew assembleAndroidTest` — instrumentation tests compiled, **not executed**
+- `./gradlew lint` — strict lint, `abortOnError = true`
+- `./gradlew assembleDebug` — debug APK, uploaded as the `draftlens-debug` artifact
+
+Physical-device verification of the Vision Lab is **pending**. No emulator or device was
+available in this environment.
 
 ## Sprint 0.1 Capture Hardening
 - [x] Task 1: AGP 8.6.1 (API 35 support); Gradle/Kotlin unchanged
