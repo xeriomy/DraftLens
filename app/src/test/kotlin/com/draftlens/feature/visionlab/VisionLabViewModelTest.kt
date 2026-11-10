@@ -118,16 +118,21 @@ class VisionLabViewModelTest {
     /** Blocks the call for [BLOCKED_FRAME_ID] until released, so a stale result can arrive late. */
     private class BlockingFakePreprocessor : FramePreprocessor {
         private val gate = CountDownLatch(1)
+        private val entered = CountDownLatch(1)
         private val firstReturned = CountDownLatch(1)
         private val blocked = AtomicBoolean(false)
 
         override fun process(input: OriginalFrame, request: ProcessFrameRequest): ProcessFrameResult {
             if (input.id.value == BLOCKED_FRAME_ID && blocked.compareAndSet(false, true)) {
+                entered.countDown()
                 gate.await()
                 firstReturned.countDown()
             }
             return ProcessFrameResult.Success(buildProcessedFrame(input))
         }
+
+        /** True once the blocked call is actually inside the preprocessor. */
+        fun awaitEntered(): Boolean = entered.await(5, TimeUnit.SECONDS)
 
         fun releaseFirst() {
             gate.countDown()
@@ -212,6 +217,9 @@ class VisionLabViewModelTest {
         val vm = VisionLabViewModel(source, preprocessor, FakeCalibrationRepository())
 
         vm.processFrame()
+        // The first request must be inside the preprocessor before the second one supersedes it;
+        // a request cancelled before it starts never reaches the preprocessor at all.
+        assertTrue("the first request never reached the preprocessor", preprocessor.awaitEntered())
         source.emit(originalFrame("second"))
         vm.processFrame()
 
