@@ -1,0 +1,220 @@
+package com.draftlens.feature.visionlab
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.draftlens.vision.annotation.SlotTeam
+import com.draftlens.vision.annotation.SlotType
+import com.draftlens.vision.calibration.CalibrationRepository
+import com.draftlens.vision.model.OriginalFrame
+import com.draftlens.vision.model.VisionFrameSource
+import com.draftlens.vision.model.android.BitmapFramePayload
+import com.draftlens.vision.preprocessing.AndroidFramePreprocessor
+
+/**
+ * Vision Lab: inspect frames, place manual draft-slot annotations, and manage calibration
+ * profiles. There is no recognizer in this sprint, so nothing here reports a detection.
+ */
+@Composable
+fun VisionLabScreen(
+    calibrationRepository: CalibrationRepository,
+    source: VisionFrameSource,
+) {
+    val vm: VisionLabViewModel = viewModel {
+        VisionLabViewModel(
+            source = source,
+            preprocessor = AndroidFramePreprocessor,
+            calibrationRepository = calibrationRepository,
+        )
+    }
+    val state by vm.uiState.collectAsState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("DraftLens — Vision Lab (Sprint 1A)", style = MaterialTheme.typography.titleLarge)
+        Text("Detection: not implemented. Manual slots are calibration data, not detections.")
+
+        FramePreviewCard(state = state, onFreeze = vm::freeze, onResume = vm::resume, onProcess = vm::processFrame, onClear = vm::clear)
+
+        AnnotationCanvasCard(state = state, vm = vm)
+
+        SlotEditor(state = state, vm = vm)
+
+        ProcessingInspectorCard(state = state, onMaxDimensionChange = vm::setMaxProcessedDimension)
+
+        ProfileControls(state = state, vm = vm)
+
+        state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+    }
+}
+
+@Composable
+private fun FramePreviewCard(
+    state: VisionLabUiState,
+    onFreeze: () -> Unit,
+    onResume: () -> Unit,
+    onProcess: () -> Unit,
+    onClear: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Frame Preview", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    if (state.isFrozen) "FROZEN" else "LIVE",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (state.isFrozen) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                )
+                Text("Source: ${state.sourceState}", style = MaterialTheme.typography.labelLarge)
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFF111621)),
+                contentAlignment = Alignment.Center,
+            ) {
+                FrameImage(state.displayFrame)
+            }
+
+            val frame = state.displayFrame
+            Text("Original: ${frame?.sourceWidth ?: 0} × ${frame?.sourceHeight ?: 0}")
+            Text("Display rotation: ${frame?.displayRotation ?: "—"}")
+            Text("Orientation correction: ${frame?.rotation ?: "—"}")
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = if (state.isFrozen) onResume else onFreeze) {
+                    Text(if (state.isFrozen) "Resume" else "Freeze")
+                }
+                OutlinedButton(onClick = onProcess, enabled = frame != null) { Text("Process Frame") }
+                OutlinedButton(onClick = onClear, enabled = state.isFrozen || state.processed != null) { Text("Clear") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FrameImage(frame: OriginalFrame?) {
+    val payload = frame?.payload
+    when (payload) {
+        is BitmapFramePayload -> Image(
+            bitmap = payload.bitmap.asImageBitmap(),
+            contentDescription = "Captured frame",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit,
+        )
+        else -> Text(
+            "No bitmap frame. Start capture on the Debug Capture tab, or use a test fixture.",
+            color = Color.Gray,
+            modifier = Modifier.padding(12.dp),
+        )
+    }
+}
+
+@Composable
+private fun AnnotationCanvasCard(state: VisionLabUiState, vm: VisionLabViewModel) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF181D26)),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Annotation Canvas", style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Text(
+                "Drag inside a box to move it, drag a corner to resize, drag empty canvas to create one.",
+                color = Color.Gray,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            AnnotationCanvas(
+                frame = state.displayFrame,
+                slots = state.slots,
+                selectedSlotId = state.selectedSlotId,
+                onSelect = vm::selectSlot,
+                onMove = vm::moveSlot,
+                onResize = vm::resizeSlot,
+                onCreate = { rect -> vm.addSlot(SlotType.BAN, SlotTeam.ALLY, rect) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(260.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProcessingInspectorCard(
+    state: VisionLabUiState,
+    onMaxDimensionChange: (Int) -> Unit,
+) {
+    var dimensionText by remember(state.maxProcessedDimension) {
+        mutableStateOf(state.maxProcessedDimension.toString())
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Processing Inspector", style = MaterialTheme.typography.titleMedium)
+            Text("Detection: not implemented")
+
+            val source = state.displayFrame
+            val processed = state.processed
+            Text("Source dimensions: ${source?.sourceWidth ?: 0} × ${source?.sourceHeight ?: 0}")
+            Text("Output dimensions: ${processed?.payload?.width ?: 0} × ${processed?.payload?.height ?: 0}")
+            Text("Rotation: ${processed?.rotation ?: source?.rotation ?: "—"}")
+            Text("Crop: ${processed?.transform?.crop?.let { "${it.left}..${it.right} × ${it.top}..${it.bottom}" } ?: "none"}")
+            Text("Scale: ${processed?.transform?.scale ?: "—"}")
+            Text("Duration: ${processed?.processingDurationMs?.let { "$it ms" } ?: "—"}")
+            Text("Status: ${state.processStatus}")
+            Text("Pixels shown: ${if (state.isFrozen) "frozen" else "live"}")
+            state.processError?.let { Text("Error: $it", color = MaterialTheme.colorScheme.error) }
+
+            OutlinedTextField(
+                value = dimensionText,
+                onValueChange = { text ->
+                    dimensionText = text
+                    text.toIntOrNull()?.let(onMaxDimensionChange)
+                },
+                label = { Text("Max processed dimension") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
