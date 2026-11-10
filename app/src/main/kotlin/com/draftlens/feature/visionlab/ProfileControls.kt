@@ -39,6 +39,12 @@ fun ProfileControls(state: VisionLabUiState, vm: VisionLabViewModel) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("Calibration profiles", style = MaterialTheme.typography.titleMedium)
+            if (!state.isFrozen) {
+                Text(
+                    "Freeze a frame before saving, updating or applying a profile.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
 
             when (val calibration = state.calibration) {
                 is CalibrationLoadResult.Success -> {
