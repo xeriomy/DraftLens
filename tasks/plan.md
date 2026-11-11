@@ -25,6 +25,10 @@ calibration profiles. No recognition, no recommendations, no overlays.
       uniformly into the fitted rectangle so the pixels and the overlay share one set of
       bounds, the canvas is sized from the oriented aspect ratio, `displayRotation` is
       `@Volatile`, and the Vision Lab explains its controls in place
+- [x] Sprint 1A.1 interaction redesign (`927e8e0`, `dffc12d`): an explicit gesture state
+      machine, a contextual slot property editor with copy/paste/duplicate on an internal
+      clipboard, a delete control with undo, a grouped slot list keyed by slot id, a
+      fullscreen editor with zoom and pan, and team colours
 
 ### Sprint 1A verification
 CI (GitHub Actions, ubuntu-latest x86_64) is the build of record: `test`,

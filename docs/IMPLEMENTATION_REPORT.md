@@ -25,6 +25,80 @@ states "Detection: not implemented"; manual slots are calibration data, never de
 | Vision Lab | `feature/visionlab/*` | preview, freeze/resume, explicit processing, annotation canvas, text slot editor, profile controls |
 | Tabs | `MainActivity.kt`, `DraftLensApp.kt`, `feature/home/DebugCaptureScreen.kt` | Material 3 `TabRow`; capture stays alive across tabs |
 
+## Sprint 1A.1 — Vision Lab interaction redesign
+
+The annotation workflow was rebuilt around an explicit gesture model and a contextual
+property editor. The frame sizing and rendering fix was confirmed working on a real device
+by the user before this work started and was left untouched.
+
+### The interaction model
+
+`AnnotationInteraction` is a pure state machine that decides what every gesture means, so
+two gestures can never compete and the rules are unit-tested:
+
+| Interaction | Action |
+|---|---|
+| Short tap on a rectangle | select it |
+| Drag inside a selected rectangle | move it |
+| Long press on a rectangle | open its property editor |
+| Drag a resize handle | resize it |
+| Long press on empty image space, then drag | draw a new slot |
+| Short tap on empty image space | nothing |
+| Tap the X control | delete it |
+
+A tap never moves anything, a drag on an unselected rectangle only selects it, a stationary
+long press is not a move, and a drag on empty space never creates a rectangle.
+
+### The contextual property editor
+
+A long press opens a compact editor next to the slot: type, team, index and an optional
+label, plus **Copy**, **Paste** and **Duplicate**. It positions itself inside the window, so
+it is never clipped off-screen in either orientation, and it no longer occupies a permanent
+part of the canvas. The old bottom property controls and the "Add slot" card with its
+hardcoded rectangle are gone; creating a slot is now a long press and a drag on the image.
+
+Copy and paste use the application's own clipboard, never the Android system clipboard. A
+pasted slot gets a new unique id, is offset a little, stays inside the image and takes the
+next free index in its `(type, team)` scope. The source slot is always preserved.
+
+### Deletion and undo
+
+The selected slot shows an X control at its top-right corner, drawn in red and distinct from
+the resize handles. Deleting uses the slot's stable id. **Undo** covers a deletion, a
+creation and a move or resize; a deletion is undone by restoring the slot with its own id.
+
+### The slot list
+
+The list is grouped into ALLY · BAN, ENEMY · BAN, ALLY · PICK, ENEMY · PICK and GLOBAL.
+Every row is keyed by `key(slot.id)`, so the list never relies on positions. Tapping a row
+selects that rectangle, and selecting a rectangle highlights its row.
+
+Investigating the deletion path: `SlotAnnotationStore.delete(id)` already removed by id and
+was never deleting the first item. The real risk was Compose list identity, which is now
+removed by keying every row with the slot's own id; a regression test deletes the second of
+three slots and checks that the other two survive.
+
+### Fullscreen editor
+
+*Fullscreen* opens the image on its own screen in either orientation, fitted to the screen,
+with pinch-to-zoom and pan, *Fit to screen* and *Reset zoom*, a compact control row and a
+*Done* action. The image and the overlay are drawn under the same transform and pointer
+positions are mapped back through its inverse, so the overlay stays aligned while zooming.
+The gesture hint appears when the editor is entered and can be dismissed.
+
+### Slot colours
+
+`ALLY` is blue, `ENEMY` is red and `GLOBAL` is neutral grey, and every rectangle also
+carries a readable label, so colour is never the only way to tell teams apart.
+
+### Unchanged on purpose
+
+The frame sizing and rendering fix, the letterbox rejection, the source-normalized
+coordinate semantics, the display-rotation handling, the calibration codecs and the capture
+lifecycle were not rewritten.
+
+---
+
 ## Verification actually performed
 
 Everything below ran in **GitHub Actions** (`ubuntu-latest`, x86_64, JDK 17). The authoring
@@ -36,13 +110,10 @@ touches resources can run there — verified as
 
 | | |
 |---|---|
-| Run | **42943730823** — <https://github.com/xeriomy/DraftLens/actions/runs/42943730823> |
-| Tested head SHA | `4c42513690ab1e05b817c3a97f6949ba57a60fb7` |
-| Unit tests | 216 tests · 0 failures · 0 errors · 0 skipped (432 executions, debug + release variants) |
+| Run | **42955353155** — <https://github.com/xeriomy/DraftLens/actions/runs/42955353155> |
+| Tested head SHA | `dffc12dd4f4ccebf3d70dd0d37b57bed25b812f8` |
+| Unit tests | 254 tests · 0 failures · 0 errors · 0 skipped (508 executions, debug + release variants) |
 | Other gates | `assembleAndroidTest`, strict `lint`, `assembleDebug` — all green |
-| Artifact | `draftlens-debug`, 10 166 508 bytes |
-| Artifact digest | `sha256:dd501ac7fbe282de56c318ff581f77b76813b087db8d8b8944a041065deaf7c4` |
-| APK SHA-256 | `692a9221afa57763e6a39bf840d1fca409e3c433f5e69d75ba760af86ff3fe7f` (`app-debug.apk`) |
 
 ### Run history
 
@@ -70,6 +141,10 @@ touches resources can run there — verified as
 | `42926731121` | `007621f` | success | profile-controls hint and documentation |
 | `42942937802` | `d978309` | failure (expected) | canvas-fix red: the new pins had no implementation |
 | `42943163574` | `01603de` | failure | 1 test used an out-of-range `NormalizedPoint`, which the type forbids |
+| `42943730823` | `4c42513` | success | canvas rendering and workspace fixes green |
+| `42953552163` | `927e8e0` | failure | the interaction rework did not compile: wrong pointer imports and a rectangle type mismatch |
+| `42954140054` | `0762e96` | failure | 1 test expected a duplicate index that was not actually taken |
+| `42955353155` | `dffc12d` | success | interaction rework green |
 | `42943730823` | `4c42513` | **success** | canvas rendering and workspace fixes green |
 
 Green run tasks: `./gradlew test`, `./gradlew assembleAndroidTest`, `./gradlew lint`

@@ -19,21 +19,27 @@
 - [x] Canvas rendering and workspace fixes: bitmap scaled into the fitted rectangle, canvas
       sized by the oriented aspect ratio, `@Volatile` display rotation, control explanations
       (`01603de`, `4c42513`)
+- [x] Sprint 1A.1 Vision Lab interaction redesign: explicit gesture state machine, contextual
+      slot property editor, copy/paste/duplicate on an internal clipboard, delete control
+      with undo, grouped slot list with stable keys, fullscreen editor with zoom and pan,
+      slot colours (`927e8e0`, `dffc12d`)
 
 Verification for Sprint 1A runs in GitHub Actions (ubuntu-latest, x86_64) because the
 authoring host is aarch64 and AGP's `aapt2` is an x86_64-only binary, so no Gradle task that
 touches resources can run locally. Draft PR: https://github.com/xeriomy/DraftLens/pull/2
 
 Executed commands (CI, `./gradlew`):
-- `./gradlew test` — 216 JVM unit tests, 0 failures, 0 errors, 0 skipped
+- `./gradlew test` — 254 JVM unit tests, 0 failures, 0 errors, 0 skipped
 - `./gradlew assembleAndroidTest` — instrumentation tests compiled, **not executed**
 - `./gradlew lint` — strict lint, `abortOnError = true`
 - `./gradlew assembleDebug` — debug APK, uploaded as the `draftlens-debug` artifact
 
-Latest green run: https://github.com/xeriomy/DraftLens/actions/runs/42943730823
-(head SHA `4c42513`). Artifact digest
-`sha256:dd501ac7fbe282de56c318ff581f77b76813b087db8d8b8944a041065deaf7c4`; APK SHA-256
-`692a9221afa57763e6a39bf840d1fca409e3c433f5e69d75ba760af86ff3fe7f`.
+Latest green run: https://github.com/xeriomy/DraftLens/actions/runs/42955353155
+(head SHA `dffc12d`).
+
+The frame sizing and rendering fix was confirmed by the user on a physical device before the
+Sprint 1A.1 work started and was left unchanged. The 1A.1 interaction changes have **not**
+been verified on a device.
 
 Whole-branch review against the plan and spec: eight findings fixed in `691b9d2`, each with a
 test that failed first. The remaining minor findings are listed in the implementation report
