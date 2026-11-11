@@ -34,14 +34,6 @@ class AnnotationGeometryTest {
         )
     }
 
-    @Test fun `a created rectangle is clamped to the unit square`() {
-        val rect = AnnotationGeometry.rectBetween(
-            NormalizedPoint(0.9f, 0.9f),
-            NormalizedPoint(1.4f, 1.2f),
-        )
-        assertEquals(NormalizedRect(0.9f, 0.9f, 1f, 1f), rect)
-    }
-
     @Test fun `dragging the bottom right corner resizes the rectangle`() {
         val start = NormalizedRect(0.2f, 0.3f, 0.5f, 0.6f)
         val resized = AnnotationGeometry.resizedRect(start, Corner.BOTTOM_RIGHT, NormalizedPoint(0.7f, 0.8f))

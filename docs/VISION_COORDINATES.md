@@ -115,3 +115,25 @@ aligned with the preview for portrait, landscape and square frames, and for any
 The preview box itself fits the frame with `ContentScale.Fit`; the fitted rectangle is
 computed from the canvas size and the oriented aspect ratio, and all drawing and hit testing
 use that rectangle.
+
+## How the bitmap and the overlay share one rectangle
+
+The captured bitmap's pixel size is **not** a canvas size. `OrientedBitmapLayout` computes
+where the bitmap is actually drawn:
+
+- The oriented dimensions are `sourceWidth × sourceHeight`, or the swapped pair for 90° and
+  270°.
+- One uniform scale maps the oriented size into the fitted rectangle, so the image is never
+  stretched.
+- The bitmap is drawn centred on `fitted.center` at that scale, and the rotation is applied
+  around the same centre.
+- The axis-aligned bounds of the rotated bitmap are exactly the fitted rectangle.
+
+Because the overlay is mapped into the same fitted rectangle, the annotation of the whole
+frame (`0,0 → 1,1`) lands exactly on the rendered bitmap bounds, for every rotation. The
+same renderer draws the preview card and the annotation canvas.
+
+The workspace itself is sized from the oriented aspect ratio, so a portrait capture gets a
+tall workspace and a landscape capture keeps a usable minimum height. The image is never
+cropped and never stretched; a workspace taller than the image's aspect simply leaves
+letterbox bands, and a touch on a band is not on the image.

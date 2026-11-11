@@ -56,4 +56,14 @@ class CanvasGeometryTest {
         assertNotNull(geometry.canvasToNormalized(Offset(0f, 250f), fitted))
         assertNotNull(geometry.canvasToNormalized(Offset(1000f, 750f), fitted))
     }
+
+    @Test fun `an in progress drag is clamped to the image edge instead of stopping`() {
+        val above = geometry.canvasToNormalizedClamped(Offset(500f, 100f), fitted)
+        assertNotNull(above)
+        assertEquals(0f, above!!.y, 0.001f)
+
+        val right = geometry.canvasToNormalizedClamped(Offset(1010f, 500f), fitted)
+        assertNotNull(right)
+        assertEquals(1f, right!!.x, 0.001f)
+    }
 }

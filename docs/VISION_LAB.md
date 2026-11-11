@@ -25,6 +25,10 @@ Nothing is written to disk. Frames live in memory only.
 
 The canvas draws the oriented, uncropped frame inside a dark card.
 
+The workspace is sized from the frame's own aspect ratio, so a portrait capture gets a tall
+workspace that scrolls with the page and a landscape capture keeps a usable minimum height.
+The image is never cropped and never stretched.
+
 - Tap a rectangle to select it; tap empty canvas to deselect.
 - Drag inside a rectangle to move it. The move is clamped to the frame.
 - Drag one of the four corner handles to resize.
@@ -34,12 +38,25 @@ The canvas draws the oriented, uncropped frame inside a dark card.
   initial, index.
 
 A touch on a **letterbox band** — the empty area beside the image when its aspect ratio
-does not match the card — is not part of the image. It selects nothing and cannot start a
-drag, so a rectangle is never created or moved onto the band. Once a drag has started on
+does not match the workspace — is not part of the image. It selects nothing and cannot start
+a drag, so a rectangle is never created or moved onto the band. Once a drag has started on
 the image it keeps following the pointer if it leaves the image.
 
 The overlay never redraws or mutates the source bitmap. Positions are mapped through the
-frame transform, so the overlay stays aligned with the preview.
+frame transform, and the bitmap is scaled into the same fitted rectangle, so the overlay
+stays aligned with the preview.
+
+### What the controls mean
+
+| Control | What it does |
+|---|---|
+| **Freeze** | locks the current frame before annotation |
+| **Resume** | returns to live frames |
+| **Slot** | a manually marked region where a ban/pick hero portrait is expected |
+| **Process Frame** | resizes and prepares the frame only; no recognition exists yet |
+| **Calibration profile** | saves and restores normalized slot coordinates for matching screen layouts |
+
+The screen keeps stating **"Detection: not implemented"**.
 
 ## Manual slots
 
