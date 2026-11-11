@@ -48,6 +48,41 @@ class SlotAnnotationStoreTest {
         assertEquals(0.85f, store.slots().single().rect.left, 0.0001f)
     }
 
+    @Test fun `a deleted slot is restored with its own id`() {
+        val store = store()
+        val slot = store.add(SlotType.BAN, SlotTeam.ALLY, rect(0.1f), label = "keep").getOrThrow()
+        store.delete(slot.id)
+        assertTrue(store.slots().isEmpty())
+
+        val restored = store.restore(slot)
+
+        assertTrue(restored.isSuccess)
+        assertEquals(slot.id, store.slots().single().id)
+        assertEquals("keep", store.slots().single().label)
+    }
+
+    @Test fun `restoring a slot whose index is taken is refused`() {
+        val store = store()
+        val first = store.add(SlotType.BAN, SlotTeam.ALLY, rect(0.1f)).getOrThrow()
+        store.add(SlotType.BAN, SlotTeam.ALLY, rect(0.5f), index = 2).getOrThrow()
+        store.delete(first.id)
+
+        val restored = store.restore(first)
+
+        assertTrue(restored.isFailure)
+        assertEquals(1, store.slots().size)
+    }
+
+    @Test fun `restoring a slot whose id is in use is refused`() {
+        val store = store()
+        val slot = store.add(SlotType.BAN, SlotTeam.ALLY, rect(0.1f)).getOrThrow()
+
+        val restored = store.restore(slot)
+
+        assertTrue(restored.isFailure)
+        assertEquals(1, store.slots().size)
+    }
+
     @Test fun `move clamps to top and left bounds`() {
         val store = SlotAnnotationStore(idGenerator = { "slot" })
         val slot = store.add(SlotType.PICK, SlotTeam.ENEMY, NormalizedRect(0.1f, 0.1f, 0.3f, 0.4f)).getOrThrow()

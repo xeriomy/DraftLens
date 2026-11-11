@@ -33,6 +33,8 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -240,6 +242,164 @@ class VisionLabViewModelTest {
         assertEquals("live", vm.uiState.value.liveFrame?.id?.value)
         assertEquals(VisionSourceState.CAPTURING, vm.uiState.value.sourceState)
     }
+
+    // region slot operations
+
+    @Test fun `selecting a slot by id selects exactly that slot`() = runBlocking {
+        val vm = slotVm()
+        vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.1f, 0.1f, 0.2f, 0.2f))
+        vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.4f, 0.4f, 0.5f, 0.5f))
+        val second = vm.uiState.value.slots[1]
+
+        vm.selectSlot(second.id)
+
+        assertEquals(second.id, vm.uiState.value.selectedSlotId)
+    }
+
+    @Test fun `deleting an arbitrary slot deletes only that slot`() = runBlocking {
+        val vm = slotVm()
+        vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.1f, 0.1f, 0.2f, 0.2f))
+        vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.4f, 0.4f, 0.5f, 0.5f))
+        vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.6f, 0.6f, 0.7f, 0.7f))
+        val ids = vm.uiState.value.slots.map { it.id }
+        val target = ids[1]
+
+        vm.deleteSlot(target)
+
+        val remaining = vm.uiState.value.slots.map { it.id }
+        assertEquals(2, remaining.size)
+        assertTrue(remaining.contains(ids[0]))
+        assertTrue(remaining.contains(ids[2]))
+        assertFalse(remaining.contains(target))
+        assertFalse(
+            "the deleted slot must not stay selected",
+            vm.uiState.value.selectedSlotId == target,
+        )
+    }
+
+    @Test fun `undo restores a deleted slot with its own id and metadata`() = runBlocking {
+        val vm = slotVm()
+        vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.1f, 0.1f, 0.2f, 0.2f), label = "first")
+        val slot = vm.uiState.value.slots.single()
+
+        vm.deleteSlot(slot.id)
+        assertTrue(vm.uiState.value.slots.isEmpty())
+
+        vm.undo()
+
+        val restored = vm.uiState.value.slots.single()
+        assertEquals(slot.id, restored.id)
+        assertEquals("first", restored.label)
+        assertEquals(slot.rect, restored.rect)
+    }
+
+    @Test fun `undo removes a created slot`() = runBlocking {
+        val vm = slotVm()
+        vm.createSlot(NormalizedRect(0.2f, 0.2f, 0.4f, 0.4f))
+        assertEquals(1, vm.uiState.value.slots.size)
+
+        vm.undo()
+
+        assertTrue(vm.uiState.value.slots.isEmpty())
+    }
+
+    @Test fun `a created slot becomes the selected slot`() = runBlocking {
+        val vm = slotVm()
+
+        vm.createSlot(NormalizedRect(0.2f, 0.2f, 0.4f, 0.4f))
+
+        assertEquals(vm.uiState.value.slots.single().id, vm.uiState.value.selectedSlotId)
+    }
+
+    @Test fun `copy and paste creates a new slot and keeps the original`() = runBlocking {
+        val vm = slotVm()
+        vm.addSlot(SlotType.PICK, SlotTeam.ENEMY, NormalizedRect(0.1f, 0.1f, 0.2f, 0.2f), label = "enemy")
+        val original = vm.uiState.value.slots.single()
+
+        vm.copySlot(original.id)
+        val pasted = vm.pasteSlot(original.id)
+
+        assertTrue(pasted.isSuccess)
+        val slots = vm.uiState.value.slots
+        assertEquals(2, slots.size)
+        assertTrue("the pasted slot needs a new id", slots.any { it.id != original.id })
+        assertTrue("the original must survive", slots.any { it.id == original.id })
+    }
+
+    @Test fun `a pasted slot gets the next free index in its scope`() = runBlocking {
+        val vm = slotVm()
+        vm.addSlot(SlotType.PICK, SlotTeam.ENEMY, NormalizedRect(0.1f, 0.1f, 0.2f, 0.2f))
+        val original = vm.uiState.value.slots.single()
+
+        vm.copySlot(original.id)
+        vm.pasteSlot(original.id)
+
+        val pasted = vm.uiState.value.slots.first { it.id != original.id }
+        assertEquals(2, pasted.index)
+    }
+
+    @Test fun `a duplicated slot keeps the source and the metadata`() = runBlocking {
+        val vm = slotVm()
+        vm.addSlot(SlotType.PICK, SlotTeam.ENEMY, NormalizedRect(0.1f, 0.1f, 0.2f, 0.2f), label = "enemy")
+        val original = vm.uiState.value.slots.single()
+
+        val duplicate = vm.duplicateSlot(original.id)
+
+        assertTrue(duplicate.isSuccess)
+        val slots = vm.uiState.value.slots
+        assertEquals(2, slots.size)
+        val copy = slots.first { it.id != original.id }
+        assertEquals(original.type, copy.type)
+        assertEquals(original.team, copy.team)
+        assertEquals(original.label, copy.label)
+        assertEquals(original.index + 1, copy.index)
+    }
+
+    @Test fun `a pasted slot is offset but stays inside the image`() = runBlocking {
+        val vm = slotVm()
+        vm.addSlot(SlotType.PICK, SlotTeam.ENEMY, NormalizedRect(0.8f, 0.8f, 0.95f, 0.95f))
+        val original = vm.uiState.value.slots.single()
+
+        vm.copySlot(original.id)
+        vm.pasteSlot(original.id)
+
+        val pasted = vm.uiState.value.slots.first { it.id != original.id }
+        assertTrue(pasted.rect.right <= 1f)
+        assertTrue(pasted.rect.bottom <= 1f)
+    }
+
+    @Test fun `the menu opens for a slot that exists`() = runBlocking {
+        val vm = slotVm()
+        vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.1f, 0.1f, 0.2f, 0.2f))
+        val slot = vm.uiState.value.slots.single()
+
+        vm.openSlotMenu(slot.id)
+        assertEquals(slot.id, vm.uiState.value.menuSlotId)
+
+        vm.closeSlotMenu()
+        assertNull(vm.uiState.value.menuSlotId)
+    }
+
+    @Test fun `a move is undoable`() = runBlocking {
+        val vm = slotVm()
+        vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.2f, 0.2f, 0.4f, 0.4f))
+        val slot = vm.uiState.value.slots.single()
+
+        vm.beginSlotGesture(slot.id)
+        vm.moveSlot(slot.id, 0.1f, 0f)
+        vm.endSlotGesture()
+        assertNotEquals(slot.rect, vm.uiState.value.slots.single().rect)
+
+        vm.undo()
+
+        assertEquals(slot.rect, vm.uiState.value.slots.single().rect)
+    }
+
+    private fun slotVm(): VisionLabViewModel = VisionLabViewModel(
+        FakeVisionFrameSource(originalFrame("live")),
+        EchoPreprocessor(),
+        FakeCalibrationRepository(),
+    )
 
     @Test fun `freeze pins the current frame while live frames continue`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame("first"))
