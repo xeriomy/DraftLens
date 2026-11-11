@@ -27,6 +27,14 @@ data class VisionLabUiState(
     val calibration: CalibrationLoadResult = CalibrationLoadResult.Success(emptyList()),
     val maxProcessedDimension: Int = DEFAULT_MAX_PROCESSED_DIMENSION,
     val message: String? = null,
+    /** The slot whose contextual property editor is open, if any. */
+    val menuSlotId: String? = null,
+    /** The application's own slot clipboard; null when nothing was copied. */
+    val clipboardSlot: DraftSlot? = null,
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
+    /** True while the fullscreen annotation editor is open. */
+    val fullscreenEditor: Boolean = false,
 ) {
     /** The frame the canvas draws: the pinned one when frozen, otherwise the live one. */
     val displayFrame: OriginalFrame? get() = frozenFrame ?: liveFrame

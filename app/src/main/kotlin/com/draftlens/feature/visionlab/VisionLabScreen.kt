@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,8 +33,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.draftlens.vision.annotation.SlotTeam
-import com.draftlens.vision.annotation.SlotType
 import com.draftlens.vision.calibration.CalibrationRepository
 import com.draftlens.vision.model.VisionFrameSource
 import com.draftlens.vision.preprocessing.AndroidFramePreprocessor
@@ -56,6 +55,26 @@ fun VisionLabScreen(
     }
     val state by vm.uiState.collectAsState()
 
+    if (state.fullscreenEditor) {
+        FullscreenAnnotationEditor(
+            frame = state.displayFrame,
+            slots = state.slots,
+            selectedSlotId = state.selectedSlotId,
+            menuSlotId = state.menuSlotId,
+            onSelect = { vm.selectSlot(it) },
+            onMove = { id, dx, dy -> vm.moveSlot(id, dx, dy) },
+            onResize = { id, rect -> vm.resizeSlot(id, rect) },
+            onCreate = { rect -> vm.createSlot(rect) },
+            onDelete = { vm.deleteSlot(it) },
+            onOpenMenu = { vm.openSlotMenu(it) },
+            onGestureStart = { vm.beginSlotGesture(it) },
+            onGestureEnd = { vm.endSlotGesture() },
+            menuActions = state.slotMenuActions(vm),
+            onDone = { vm.closeFullscreenEditor() },
+        )
+        return
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -67,7 +86,13 @@ fun VisionLabScreen(
         Text("DraftLens — Vision Lab (Sprint 1A)", style = MaterialTheme.typography.titleLarge)
         Text("Detection: not implemented. Manual slots are calibration data, not detections.")
 
-        FramePreviewCard(state = state, onFreeze = vm::freeze, onResume = vm::resume, onProcess = vm::processFrame, onClear = vm::clear)
+        FramePreviewCard(
+            state = state,
+            onFreeze = vm::freeze,
+            onResume = vm::resume,
+            onProcess = vm::processFrame,
+            onClear = vm::clear,
+        )
 
         AnnotationCanvasCard(state = state, vm = vm)
 
@@ -80,6 +105,19 @@ fun VisionLabScreen(
         state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
     }
 }
+
+/** The actions the contextual property editor performs. */
+private fun VisionLabUiState.slotMenuActions(vm: VisionLabViewModel) = SlotMenuActions(
+    onTypeChange = { id, type -> vm.updateSlotType(id, type) },
+    onTeamChange = { id, team -> vm.updateSlotTeam(id, team) },
+    onIndexChange = { id, index -> vm.updateSlotIndex(id, index) },
+    onLabelChange = { id, label -> vm.updateSlotLabel(id, label) },
+    onCopy = { id -> vm.copySlot(id) },
+    onPaste = { id -> vm.pasteSlot(id) },
+    onDuplicate = { id -> vm.duplicateSlot(id) },
+    onClose = { vm.closeSlotMenu() },
+    hasClipboard = clipboardSlot != null,
+)
 
 @Composable
 private fun FramePreviewCard(
@@ -96,7 +134,11 @@ private fun FramePreviewCard(
                 Text(
                     if (state.isFrozen) "FROZEN" else "LIVE",
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (state.isFrozen) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                    color = if (state.isFrozen) {
+                        MaterialTheme.colorScheme.tertiary
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
                 )
                 Text("Source: ${state.sourceState}", style = MaterialTheme.typography.labelLarge)
             }
@@ -132,7 +174,10 @@ private fun FramePreviewCard(
                     Text(if (state.isFrozen) "Resume" else "Freeze")
                 }
                 OutlinedButton(onClick = onProcess, enabled = frame != null) { Text("Process Frame") }
-                OutlinedButton(onClick = onClear, enabled = state.isFrozen || state.processed != null) { Text("Clear") }
+                OutlinedButton(
+                    onClick = onClear,
+                    enabled = state.isFrozen || state.processed != null,
+                ) { Text("Clear") }
             }
             Text(
                 if (state.isFrozen) {
@@ -146,34 +191,45 @@ private fun FramePreviewCard(
     }
 }
 
-/** The crop of a processed frame, or "none" when the whole oriented frame was used. */
-private fun cropText(processed: com.draftlens.vision.model.ProcessedFrame?): String {
-    val crop = processed?.transform?.crop ?: return "none"
-    if (crop.left == 0f && crop.top == 0f && crop.right == 1f && crop.bottom == 1f) return "none"
-    return "${crop.left}..${crop.right} × ${crop.top}..${crop.bottom}"
-}
-
 @Composable
 private fun AnnotationCanvasCard(state: VisionLabUiState, vm: VisionLabViewModel) {
+    var showHint by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF181D26)),
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Annotation Canvas", style = MaterialTheme.typography.titleMedium, color = Color.White)
-            Text(
-                "Drag inside a box to move it, drag a corner to resize, drag empty canvas to create one.",
-                color = Color.Gray,
-                style = MaterialTheme.typography.bodySmall,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Annotation Canvas",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedButton(onClick = { vm.openFullscreenEditor() }) { Text("Fullscreen") }
+            }
+            if (showHint) {
+                AnnotationGestureHint(onDismiss = { showHint = false })
+            } else {
+                TextButton(onClick = { showHint = true }) { Text("Show gesture help") }
+            }
             AnnotationCanvas(
                 frame = state.displayFrame,
                 slots = state.slots,
                 selectedSlotId = state.selectedSlotId,
-                onSelect = vm::selectSlot,
-                onMove = vm::moveSlot,
-                onResize = vm::resizeSlot,
-                onCreate = { rect -> vm.addSlot(SlotType.BAN, SlotTeam.ALLY, rect) },
+                menuSlotId = state.menuSlotId,
+                onSelect = { vm.selectSlot(it) },
+                onMove = { id, dx, dy -> vm.moveSlot(id, dx, dy) },
+                onResize = { id, rect -> vm.resizeSlot(id, rect) },
+                onCreate = { rect -> vm.createSlot(rect) },
+                onDelete = { vm.deleteSlot(it) },
+                onOpenMenu = { vm.openSlotMenu(it) },
+                onGestureStart = { vm.beginSlotGesture(it) },
+                onGestureEnd = { vm.endSlotGesture() },
+                menuActions = state.slotMenuActions(vm),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -221,4 +277,11 @@ private fun ProcessingInspectorCard(
             )
         }
     }
+}
+
+/** The crop of a processed frame, or "none" when the whole oriented frame was used. */
+private fun cropText(processed: com.draftlens.vision.model.ProcessedFrame?): String {
+    val crop = processed?.transform?.crop ?: return "none"
+    if (crop.left == 0f && crop.top == 0f && crop.right == 1f && crop.bottom == 1f) return "none"
+    return "${crop.left}..${crop.right} × ${crop.top}..${crop.bottom}"
 }

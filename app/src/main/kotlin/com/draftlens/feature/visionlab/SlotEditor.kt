@@ -1,16 +1,17 @@
 package com.draftlens.feature.visionlab
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -18,21 +19,24 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.draftlens.vision.annotation.DraftSlot
-import com.draftlens.vision.annotation.SlotIssue
-import com.draftlens.vision.annotation.SlotIssueSeverity
 import com.draftlens.vision.annotation.SlotTeam
 import com.draftlens.vision.annotation.SlotType
 import com.draftlens.vision.geometry.NormalizedRect
 
 /**
- * Text alternative to the canvas: every slot's metadata and geometry can be edited
- * without gestures, so the annotation set stays reachable with a screen reader.
+ * The manual slot list.
+ *
+ * Slots are grouped by team and type, every row is keyed by the slot's own id, and the
+ * selection is shared with the canvas: tapping a row selects that rectangle, and
+ * selecting a rectangle highlights its row.
  */
 @Composable
 fun SlotEditor(state: VisionLabUiState, vm: VisionLabViewModel) {
@@ -49,27 +53,20 @@ fun SlotEditor(state: VisionLabUiState, vm: VisionLabViewModel) {
                 style = MaterialTheme.typography.bodySmall,
             )
             Text(
-                "These are manual annotations, not detections.",
+                "Long-press and drag on empty image space to create one.",
                 style = MaterialTheme.typography.bodySmall,
             )
 
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = vm::undo, enabled = state.canUndo) { Text("Undo") }
+                OutlinedButton(onClick = vm::redo, enabled = state.canRedo) { Text("Redo") }
+            }
+
             if (state.slots.isEmpty()) {
-                Text("No slots yet. Draw one on the canvas or add one below.")
+                Text("No slots yet.")
+            } else {
+                SlotGroups(state = state, vm = vm)
             }
-
-            state.slots.forEach { slot ->
-                val issues = state.slotIssues.filter { slot.id in it.slotIds }
-                SlotCard(
-                    slot = slot,
-                    issues = issues,
-                    selected = slot.id == state.selectedSlotId,
-                    onSelect = { vm.selectSlot(slot.id) },
-                    onDelete = { vm.deleteSlot(slot.id) },
-                    vm = vm,
-                )
-            }
-
-            AddSlotCard(vm = vm)
 
             OutlinedButton(
                 onClick = { confirmReset = true },
@@ -96,74 +93,125 @@ fun SlotEditor(state: VisionLabUiState, vm: VisionLabViewModel) {
     }
 }
 
+/** The groups the slots are listed in. */
+private val slotGroups = listOf(
+    SlotGroup("ALLY · BAN", SlotTeam.ALLY, SlotType.BAN),
+    SlotGroup("ENEMY · BAN", SlotTeam.ENEMY, SlotType.BAN),
+    SlotGroup("ALLY · PICK", SlotTeam.ALLY, SlotType.PICK),
+    SlotGroup("ENEMY · PICK", SlotTeam.ENEMY, SlotType.PICK),
+    SlotGroup("GLOBAL", SlotTeam.GLOBAL, null),
+)
+
+private data class SlotGroup(val title: String, val team: SlotTeam, val type: SlotType?)
+
 @Composable
-private fun SlotCard(
+private fun SlotGroups(state: VisionLabUiState, vm: VisionLabViewModel) {
+    slotGroups.forEach { group ->
+        val slots = state.slots.filter { slot ->
+            slot.team == group.team && (group.type == null || slot.type == group.type)
+        }
+        if (slots.isEmpty()) return@forEach
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(group.title, style = MaterialTheme.typography.labelLarge)
+            slots.forEach { slot ->
+                // The slot's own id is the identity: the list never relies on positions.
+                key(slot.id) {
+                    SlotListItem(
+                        slot = slot,
+                        selected = slot.id == state.selectedSlotId,
+                        issues = state.slotIssues.filter { slot.id in it.slotIds },
+                        onSelect = { vm.selectSlot(slot.id) },
+                        onDelete = { vm.deleteSlot(slot.id) },
+                        vm = vm,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SlotListItem(
     slot: DraftSlot,
-    issues: List<SlotIssue>,
     selected: Boolean,
+    issues: List<com.draftlens.vision.annotation.SlotIssue>,
     onSelect: () -> Unit,
     onDelete: () -> Unit,
     vm: VisionLabViewModel,
 ) {
-    // Keyed on the model values, so a slot moved on the canvas resyncs the text fields.
+    var showGeometry by remember(slot.id) { mutableStateOf(false) }
     var left by remember(slot.rect.left) { mutableStateOf(slot.rect.left.toString()) }
     var top by remember(slot.rect.top) { mutableStateOf(slot.rect.top.toString()) }
     var right by remember(slot.rect.right) { mutableStateOf(slot.rect.right.toString()) }
     var bottom by remember(slot.rect.bottom) { mutableStateOf(slot.rect.bottom.toString()) }
-    var label by remember(slot.label) { mutableStateOf(slot.label ?: "") }
-    var index by remember(slot.index) { mutableStateOf(slot.index.toString()) }
     var error by remember(slot.id) { mutableStateOf<String?>(null) }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            },
+        ),
+    ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("Slot ${slot.id.take(8)}", style = MaterialTheme.typography.titleSmall)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .background(SlotVisuals.teamColor(slot.team)),
+                )
+                Text(
+                    "${slot.type} · ${slot.team} · #${slot.index}",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(start = 8.dp).weight(1f),
+                )
+                TextButton(onClick = onSelect) { Text(if (selected) "Selected" else "Select") }
+                TextButton(onClick = onDelete) { Text("Delete") }
+            }
+
+            slot.label?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall)
+            }
             Text(
-                "${slot.type} / ${slot.team} / index ${slot.index}",
+                "id ${slot.id.take(8)} · " +
+                    "(${slot.rect.left}, ${slot.rect.top}) – (${slot.rect.right}, ${slot.rect.bottom})",
                 style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
             )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                SlotTeam.entries.forEach { team ->
-                    FilterChip(
-                        selected = slot.team == team,
-                        onClick = { error = vm.updateSlotTeam(slot.id, team).exceptionOrNull()?.message },
-                        label = { Text(team.name) },
-                    )
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                SlotType.entries.forEach { type ->
-                    FilterChip(
-                        selected = slot.type == type,
-                        onClick = { error = vm.updateSlotType(slot.id, type).exceptionOrNull()?.message },
-                        label = { Text(type.name) },
-                    )
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedTextField(
-                    value = index,
-                    onValueChange = { index = it },
-                    label = { Text("Index") },
-                    singleLine = true,
-                    modifier = Modifier.width(100.dp),
-                )
-                OutlinedTextField(
-                    value = label,
-                    onValueChange = { label = it },
-                    label = { Text("Label") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
+            issues.forEach { issue ->
+                Text(
+                    "${issue.severity}: ${issue.message}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (issue.severity == com.draftlens.vision.annotation.SlotIssueSeverity.ERROR) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.tertiary
+                    },
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("left" to left, "top" to top, "right" to right, "bottom" to bottom)
-                    .forEach { (name, value) ->
+            TextButton(onClick = { showGeometry = !showGeometry }) {
+                Text(if (showGeometry) "Hide geometry" else "Edit geometry")
+            }
+
+            if (showGeometry) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        "left" to left,
+                        "top" to top,
+                        "right" to right,
+                        "bottom" to bottom,
+                    ).forEach { (name, value) ->
                         OutlinedTextField(
                             value = value,
                             onValueChange = { newValue ->
@@ -179,23 +227,8 @@ private fun SlotCard(
                             modifier = Modifier.weight(1f),
                         )
                     }
-            }
-
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            issues.forEach { issue ->
-                Text(
-                    "${issue.severity}: ${issue.message}",
-                    color = if (issue.severity == SlotIssueSeverity.ERROR) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.tertiary
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onSelect) { Text(if (selected) "Selected" else "Select") }
+                }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 OutlinedButton(
                     onClick = {
                         val rect = parseRect(left, top, right, bottom)
@@ -203,69 +236,10 @@ private fun SlotCard(
                             error = "Coordinates must be numbers with left < right and top < bottom."
                             return@OutlinedButton
                         }
-                        val newIndex = index.toIntOrNull()
-                        if (newIndex == null || newIndex < 1) {
-                            error = "Index must be a number of at least 1."
-                            return@OutlinedButton
-                        }
-                        val indexFailure = vm.updateSlotIndex(slot.id, newIndex).exceptionOrNull()?.message
-                        if (indexFailure != null) {
-                            error = indexFailure
-                            return@OutlinedButton
-                        }
-                        val labelFailure = vm.updateSlotLabel(slot.id, label.takeIf { it.isNotBlank() })
-                            .exceptionOrNull()?.message
-                        if (labelFailure != null) {
-                            error = labelFailure
-                            return@OutlinedButton
-                        }
                         error = vm.resizeSlot(slot.id, rect).exceptionOrNull()?.message
                     },
-                ) { Text("Apply") }
-                OutlinedButton(onClick = onDelete) { Text("Delete") }
+                ) { Text("Apply geometry") }
             }
-        }
-    }
-}
-
-@Composable
-private fun AddSlotCard(vm: VisionLabViewModel) {
-    var team by remember { mutableStateOf(SlotTeam.ALLY) }
-    var type by remember { mutableStateOf(SlotType.BAN) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text("Add slot", style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                SlotTeam.entries.forEach { option ->
-                    FilterChip(
-                        selected = team == option,
-                        onClick = { team = option },
-                        label = { Text(option.name) },
-                    )
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                SlotType.entries.forEach { option ->
-                    FilterChip(
-                        selected = type == option,
-                        onClick = { type = option },
-                        label = { Text(option.name) },
-                    )
-                }
-            }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            AssistChip(
-                onClick = {
-                    val result = vm.addSlot(type, team, NormalizedRect(0.1f, 0.1f, 0.25f, 0.25f))
-                    error = result.exceptionOrNull()?.message
-                },
-                label = { Text("Add at 0.10,0.10 – 0.25,0.25") },
-            )
         }
     }
 }

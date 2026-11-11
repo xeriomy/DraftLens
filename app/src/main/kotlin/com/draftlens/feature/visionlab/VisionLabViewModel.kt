@@ -49,6 +49,10 @@ class VisionLabViewModel(
     private val generation = AtomicLong(0L)
     private var processingJob: Job? = null
 
+    private val undoStack = ArrayDeque<AnnotationEdit>()
+    private val redoStack = ArrayDeque<AnnotationEdit>()
+    private var gestureBaseline: Pair<String, NormalizedRect>? = null
+
     init {
         viewModelScope.launch {
             source.frames.collect { frame -> _uiState.update { it.copy(liveFrame = frame) } }
@@ -146,9 +150,17 @@ class VisionLabViewModel(
         label: String? = null,
     ): Result<DraftSlot> {
         val result = annotationStore.add(type, team, rect, index, label)
+        result.onSuccess { slot ->
+            pushUndo(AnnotationEdit.Created(slot))
+            annotationStore.select(slot.id)
+        }
         refreshSlots()
         return result
     }
+
+    /** Creates a slot drawn on the canvas and selects it. */
+    fun createSlot(rect: NormalizedRect): Result<DraftSlot> =
+        addSlot(SlotType.BAN, SlotTeam.ALLY, rect)
 
     fun moveSlot(id: String, deltaX: Float, deltaY: Float): Result<DraftSlot> =
         annotationStore.move(id, deltaX, deltaY).also { refreshSlots() }
@@ -174,13 +186,160 @@ class VisionLabViewModel(
     }
 
     fun deleteSlot(id: String) {
-        annotationStore.delete(id)
-        refreshSlots()
+        val slot = annotationStore.slots().firstOrNull { it.id == id } ?: return
+        if (annotationStore.delete(id)) {
+            pushUndo(AnnotationEdit.Deleted(slot))
+            refreshSlots()
+        }
     }
 
     fun resetSlots() {
         annotationStore.reset()
         refreshSlots()
+    }
+
+    // endregion
+
+    // region contextual property editor
+
+    /** Opens the property editor of a slot. */
+    fun openSlotMenu(id: String) {
+        if (annotationStore.slots().none { it.id == id }) return
+        _uiState.update { it.copy(menuSlotId = id) }
+    }
+
+    fun closeSlotMenu() {
+        _uiState.update { it.copy(menuSlotId = null) }
+    }
+
+    // endregion
+
+    // region clipboard
+
+    /** Copies a slot into the application's own clipboard. */
+    fun copySlot(id: String) {
+        val slot = annotationStore.slots().firstOrNull { it.id == id } ?: return
+        _uiState.update { it.copy(clipboardSlot = slot, message = "Copied ${slot.id.take(8)}") }
+    }
+
+    /**
+     * Pastes the copied slot next to [targetSlotId], or next to the copied slot itself.
+     * The pasted slot gets a new id and the next free index in its scope.
+     */
+    fun pasteSlot(targetSlotId: String? = null): Result<DraftSlot> {
+        val copied = _uiState.value.clipboardSlot
+            ?: return Result.failure(IllegalStateException("Nothing has been copied"))
+        val source = targetSlotId?.let { id -> annotationStore.slots().firstOrNull { it.id == id } } ?: copied
+        return duplicateFrom(source)
+    }
+
+    /** Duplicates a slot: a new id, a new index and a small offset. */
+    fun duplicateSlot(id: String): Result<DraftSlot> {
+        val source = annotationStore.slots().firstOrNull { it.id == id }
+            ?: return Result.failure(IllegalArgumentException("Unknown slot id: $id"))
+        return duplicateFrom(source)
+    }
+
+    private fun duplicateFrom(source: DraftSlot): Result<DraftSlot> {
+        val rect = SlotPlacement.offsetRect(source.rect)
+        val result = annotationStore.add(
+            type = source.type,
+            team = source.team,
+            rect = rect,
+            index = null,
+            label = source.label,
+        )
+        result.onSuccess { slot ->
+            pushUndo(AnnotationEdit.Created(slot))
+            annotationStore.select(slot.id)
+        }
+        refreshSlots()
+        return result
+    }
+
+    // endregion
+
+    // region undo
+
+    /** Records the rectangle of a slot before a move or resize gesture changes it. */
+    fun beginSlotGesture(id: String) {
+        gestureBaseline = annotationStore.slots().firstOrNull { it.id == id }?.let { id to it.rect }
+    }
+
+    /** Closes a move or resize gesture and records it as undoable when it changed anything. */
+    fun endSlotGesture() {
+        val baseline = gestureBaseline
+        gestureBaseline = null
+        if (baseline == null) return
+        val current = annotationStore.slots().firstOrNull { it.id == baseline.first } ?: return
+        if (current.rect == baseline.second) return
+        pushUndo(AnnotationEdit.GeometryChanged(baseline.first, baseline.second, current.rect))
+    }
+
+    fun undo() {
+        val edit = undoStack.removeLastOrNull() ?: return
+        when (edit) {
+            is AnnotationEdit.Deleted -> {
+                val restored = annotationStore.restore(edit.slot)
+                if (restored.isFailure) {
+                    undoStack.add(edit)
+                    report(restored.exceptionOrNull()?.message ?: "The deleted slot cannot be restored")
+                    return
+                }
+                annotationStore.select(edit.slot.id)
+            }
+
+            is AnnotationEdit.Created -> annotationStore.delete(edit.slot.id)
+            is AnnotationEdit.GeometryChanged -> annotationStore.resize(edit.slotId, edit.before)
+        }
+        redoStack.add(edit)
+        refreshSlots()
+    }
+
+    fun redo() {
+        val edit = redoStack.removeLastOrNull() ?: return
+        when (edit) {
+            is AnnotationEdit.Deleted -> annotationStore.delete(edit.slot.id)
+            is AnnotationEdit.Created -> {
+                val restored = annotationStore.restore(edit.slot)
+                if (restored.isFailure) {
+                    redoStack.add(edit)
+                    report(restored.exceptionOrNull()?.message ?: "The slot cannot be restored")
+                    return
+                }
+                annotationStore.select(edit.slot.id)
+            }
+
+            is AnnotationEdit.GeometryChanged -> annotationStore.resize(edit.slotId, edit.after)
+        }
+        undoStack.add(edit)
+        refreshSlots()
+    }
+
+    private fun pushUndo(edit: AnnotationEdit) {
+        undoStack.add(edit)
+        while (undoStack.size > MAX_UNDO) undoStack.removeAt(0)
+        redoStack.clear()
+        _uiState.update { it.copy(canUndo = undoStack.isNotEmpty(), canRedo = false) }
+    }
+
+    // endregion
+
+    // region fullscreen editor
+
+    fun openFullscreenEditor() {
+        _uiState.update { it.copy(fullscreenEditor = true) }
+    }
+
+    fun closeFullscreenEditor() {
+        _uiState.update { it.copy(fullscreenEditor = false) }
+    }
+
+    // endregion
+
+    private fun report(message: String?) {
+        if (message == null) return
+        _uiState.update { it.copy(message = message) }
     }
 
     private fun refreshSlots() {
@@ -189,11 +348,11 @@ class VisionLabViewModel(
                 slots = annotationStore.slots(),
                 selectedSlotId = annotationStore.selectedSlotId(),
                 slotIssues = annotationStore.validate(),
+                canUndo = undoStack.isNotEmpty(),
+                canRedo = redoStack.isNotEmpty(),
             )
         }
     }
-
-    // endregion
 
     // region calibration profiles
 
@@ -334,6 +493,7 @@ class VisionLabViewModel(
     private companion object {
         const val UNSUPPORTED_SCHEMA_MESSAGE =
             "The stored calibration data uses an unsupported schema. Delete all calibration data to continue."
+        const val MAX_UNDO = 50
     }
 }
 

@@ -88,6 +88,31 @@ class SlotAnnotationStore(
         return replace(slot, slot.copy(label = label))
     }
 
+    /**
+     * Restores a previously deleted slot with its own id.
+     *
+     * The id is the slot's own and is never handed out to another slot, so restoring it
+     * cannot create a duplicate. The slot is refused when its id is already in use or when
+     * its rectangle or index would be invalid.
+     */
+    fun restore(slot: DraftSlot): Result<DraftSlot> {
+        if (slotList.any { it.id == slot.id }) {
+            return fail(SlotIssueCode.DUPLICATE_ID, "Slot id ${slot.id} is already in use")
+        }
+        if (!meetsMinSize(slot.rect)) {
+            return fail(SlotIssueCode.INVALID_RECT, "Rectangle is below the minimum size of $MIN_SIZE in one axis")
+        }
+        if (slot.index < 1) {
+            return fail(SlotIssueCode.INVALID_INDEX, "Index must be at least 1, was ${slot.index}")
+        }
+        if (hasDuplicateIndex(slot.type, slot.team, slot.index, excludingId = null)) {
+            return fail(SlotIssueCode.DUPLICATE_INDEX, "Index ${slot.index} already used for ${slot.type}/${slot.team}")
+        }
+        usedIds += slot.id
+        slotList += slot
+        return Result.success(slot)
+    }
+
     fun select(id: String?) {
         if (id != null && slotList.none { it.id == id }) {
             throw IllegalArgumentException("Unknown slot id: $id")
