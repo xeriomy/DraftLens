@@ -134,6 +134,14 @@ private fun FramePreviewCard(
                 OutlinedButton(onClick = onProcess, enabled = frame != null) { Text("Process Frame") }
                 OutlinedButton(onClick = onClear, enabled = state.isFrozen || state.processed != null) { Text("Clear") }
             }
+            Text(
+                if (state.isFrozen) {
+                    "Resume returns to live frames."
+                } else {
+                    "Freeze locks the current frame before annotation."
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }
@@ -166,9 +174,7 @@ private fun AnnotationCanvasCard(state: VisionLabUiState, vm: VisionLabViewModel
                 onMove = vm::moveSlot,
                 onResize = vm::resizeSlot,
                 onCreate = { rect -> vm.addSlot(SlotType.BAN, SlotTeam.ALLY, rect) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(260.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -186,6 +192,10 @@ private fun ProcessingInspectorCard(
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Processing Inspector", style = MaterialTheme.typography.titleMedium)
             Text("Detection: not implemented")
+            Text(
+                "Process Frame resizes and prepares the frame only; no recognition exists yet.",
+                style = MaterialTheme.typography.bodySmall,
+            )
 
             val source = state.displayFrame
             val processed = state.processed

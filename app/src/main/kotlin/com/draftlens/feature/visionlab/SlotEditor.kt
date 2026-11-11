@@ -45,6 +45,10 @@ fun SlotEditor(state: VisionLabUiState, vm: VisionLabViewModel) {
         ) {
             Text("Manual slots", style = MaterialTheme.typography.titleMedium)
             Text(
+                "A slot is a manually marked region where a ban/pick hero portrait is expected.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
                 "These are manual annotations, not detections.",
                 style = MaterialTheme.typography.bodySmall,
             )

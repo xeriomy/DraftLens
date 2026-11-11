@@ -20,14 +20,14 @@ import androidx.compose.ui.unit.IntSize
 import com.draftlens.vision.model.FrameRotation
 import com.draftlens.vision.model.OriginalFrame
 import com.draftlens.vision.model.android.BitmapFramePayload
-import com.draftlens.vision.model.degrees
 import kotlin.math.min
 
 /**
  * Draws a captured bitmap in its oriented (upright) form inside [fitted].
  *
- * The overlay in [AnnotationCanvas] is mapped into oriented space, so the pixels have to
- * be turned the same way; otherwise the two disagree for a non-zero correction.
+ * The bitmap is scaled uniformly into the fitted rectangle and rotated about its centre,
+ * so the drawn pixels and the annotation overlay share the same bounds. The overlay in
+ * [AnnotationCanvas] is mapped into oriented space, so the two must agree exactly.
  */
 fun DrawScope.drawOrientedBitmap(
     bitmap: ImageBitmap,
@@ -37,15 +37,12 @@ fun DrawScope.drawOrientedBitmap(
     fitted: Rect,
 ) {
     if (fitted.width <= 0f || fitted.height <= 0f || sourceWidth <= 0 || sourceHeight <= 0) return
-    val center = fitted.center
-    withTransform({ rotate(rotation.degrees.toFloat(), pivot = center) }) {
+    val layout = OrientedBitmapLayout.of(sourceWidth, sourceHeight, rotation, fitted)
+    withTransform({ rotate(layout.degrees, pivot = layout.pivot) }) {
         drawImage(
             image = bitmap,
-            dstOffset = IntOffset(
-                (center.x - sourceWidth / 2f).toInt(),
-                (center.y - sourceHeight / 2f).toInt(),
-            ),
-            dstSize = IntSize(sourceWidth, sourceHeight),
+            dstOffset = IntOffset(layout.destination.left.toInt(), layout.destination.top.toInt()),
+            dstSize = IntSize(layout.destination.width.toInt(), layout.destination.height.toInt()),
         )
     }
 }

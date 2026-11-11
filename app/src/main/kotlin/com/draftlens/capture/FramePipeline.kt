@@ -43,7 +43,11 @@ class FramePipeline(
      * The device display rotation recorded on every frame. Updated independently of the
      * ImageReader size, so a rotation that leaves the capture size unchanged is still
      * reflected on the next frame.
+     *
+     * Written from the display listener's thread and read from the ImageReader thread, so
+     * the visibility is explicit.
      */
+    @Volatile
     var displayRotation: FrameRotation = FrameRotation.ROTATION_0
         private set
 

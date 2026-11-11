@@ -39,6 +39,10 @@ fun ProfileControls(state: VisionLabUiState, vm: VisionLabViewModel) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("Calibration profiles", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "A calibration profile saves and restores normalized slot coordinates for matching screen layouts.",
+                style = MaterialTheme.typography.bodySmall,
+            )
             if (!state.isFrozen) {
                 Text(
                     "Freeze a frame before saving, updating or applying a profile.",

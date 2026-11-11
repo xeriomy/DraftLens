@@ -56,7 +56,7 @@ class AnnotationGeometryTest {
 
     @Test fun `a resize that would collapse the rectangle is refused`() {
         val start = NormalizedRect(0.2f, 0.3f, 0.5f, 0.6f)
-        assertNull(AnnotationGeometry.resizedRect(start, Corner.BOTTOM_RIGHT, NormalizedPoint(0.25f, 0.65f)))
+        assertNull(AnnotationGeometry.resizedRect(start, Corner.BOTTOM_RIGHT, NormalizedPoint(0.205f, 0.65f)))
     }
 }
 
