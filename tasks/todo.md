@@ -16,21 +16,24 @@
 - [x] Focused review fixes: display rotation updates, canvas letterbox, clear cancels
       processing, calibration slot validation, frozen-frame profile policy, docs and CI
       (`8f046c0`, `313775d`, `007621f`)
+- [x] Canvas rendering and workspace fixes: bitmap scaled into the fitted rectangle, canvas
+      sized by the oriented aspect ratio, `@Volatile` display rotation, control explanations
+      (`01603de`, `4c42513`)
 
 Verification for Sprint 1A runs in GitHub Actions (ubuntu-latest, x86_64) because the
 authoring host is aarch64 and AGP's `aapt2` is an x86_64-only binary, so no Gradle task that
 touches resources can run locally. Draft PR: https://github.com/xeriomy/DraftLens/pull/2
 
 Executed commands (CI, `./gradlew`):
-- `./gradlew test` — 199 JVM unit tests, 0 failures, 0 errors, 0 skipped
+- `./gradlew test` — 216 JVM unit tests, 0 failures, 0 errors, 0 skipped
 - `./gradlew assembleAndroidTest` — instrumentation tests compiled, **not executed**
 - `./gradlew lint` — strict lint, `abortOnError = true`
 - `./gradlew assembleDebug` — debug APK, uploaded as the `draftlens-debug` artifact
 
-Latest green run: https://github.com/xeriomy/DraftLens/actions/runs/42926731121
-(head SHA `007621f`). Artifact digest
-`sha256:c8c88e09b2399539107ad3156683ca82d39011263f755fa7681b545ee18ee2ba`; APK SHA-256
-`b13fcc80e816bbdee5a60b4e4f30333bbad347c6f35e2513c9a14f8657dae247`.
+Latest green run: https://github.com/xeriomy/DraftLens/actions/runs/42943730823
+(head SHA `4c42513`). Artifact digest
+`sha256:dd501ac7fbe282de56c318ff581f77b76813b087db8d8b8944a041065deaf7c4`; APK SHA-256
+`692a9221afa57763e6a39bf840d1fca409e3c433f5e69d75ba760af86ff3fe7f`.
 
 Whole-branch review against the plan and spec: eight findings fixed in `691b9d2`, each with a
 test that failed first. The remaining minor findings are listed in the implementation report

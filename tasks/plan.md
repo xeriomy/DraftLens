@@ -21,6 +21,10 @@ calibration profiles. No recognition, no recommendations, no overlays.
       independently of the capture size, canvas letterbox rejected, Clear cancels in-flight
       processing, shared slot validator for calibration documents, frozen-frame required for
       profile save/update/apply, documentation and CI record updated
+- [x] Canvas rendering and workspace fixes (`01603de`, `4c42513`): the bitmap is scaled
+      uniformly into the fitted rectangle so the pixels and the overlay share one set of
+      bounds, the canvas is sized from the oriented aspect ratio, `displayRotation` is
+      `@Volatile`, and the Vision Lab explains its controls in place
 
 ### Sprint 1A verification
 CI (GitHub Actions, ubuntu-latest x86_64) is the build of record: `test`,

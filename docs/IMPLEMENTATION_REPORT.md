@@ -36,13 +36,13 @@ touches resources can run there — verified as
 
 | | |
 |---|---|
-| Run | **42926731121** — <https://github.com/xeriomy/DraftLens/actions/runs/42926731121> |
-| Tested head SHA | `007621f808182355103c884582b31145040c3837` |
-| Unit tests | 199 tests · 0 failures · 0 errors · 0 skipped (398 executions, debug + release variants) |
+| Run | **42943730823** — <https://github.com/xeriomy/DraftLens/actions/runs/42943730823> |
+| Tested head SHA | `4c42513690ab1e05b817c3a97f6949ba57a60fb7` |
+| Unit tests | 216 tests · 0 failures · 0 errors · 0 skipped (432 executions, debug + release variants) |
 | Other gates | `assembleAndroidTest`, strict `lint`, `assembleDebug` — all green |
-| Artifact | `draftlens-debug`, 10 162 789 bytes |
-| Artifact digest | `sha256:c8c88e09b2399539107ad3156683ca82d39011263f755fa7681b545ee18ee2ba` |
-| APK SHA-256 | `b13fcc80e816bbdee5a60b4e4f30333bbad347c6f35e2513c9a14f8657dae247` (`app-debug.apk`) |
+| Artifact | `draftlens-debug`, 10 166 508 bytes |
+| Artifact digest | `sha256:dd501ac7fbe282de56c318ff581f77b76813b087db8d8b8944a041065deaf7c4` |
+| APK SHA-256 | `692a9221afa57763e6a39bf840d1fca409e3c433f5e69d75ba760af86ff3fe7f` (`app-debug.apk`) |
 
 ### Run history
 
@@ -67,7 +67,10 @@ touches resources can run there — verified as
 | `42925456760` | `1789d44a37143fcb59fbdefa6a43b876a9022773` | failure (expected) | focused-fix red: the new pins had no implementation |
 | `42925901901` | `8f046c0` | failure | 5 tests still assumed the old profile frame policy |
 | `42926242828` | `313775d` | success | focused fixes green |
-| `42926731121` | `007621f` | **success** | final: profile-controls hint + documentation |
+| `42926731121` | `007621f` | success | profile-controls hint and documentation |
+| `42942937802` | `d978309` | failure (expected) | canvas-fix red: the new pins had no implementation |
+| `42943163574` | `01603de` | failure | 1 test used an out-of-range `NormalizedPoint`, which the type forbids |
+| `42943730823` | `4c42513` | **success** | canvas rendering and workspace fixes green |
 
 Green run tasks: `./gradlew test`, `./gradlew assembleAndroidTest`, `./gradlew lint`
 (strict, `abortOnError = true`), `./gradlew assembleDebug`, APK uploaded as the
@@ -105,6 +108,38 @@ failed before the fix.
    frame; a moving live frame is never measured.
 6. **Documentation and CI.** This report, `docs/VISION_TESTING.md` and PR #2 name the exact
    green run, its head SHA and the artifact digest.
+
+## Canvas rendering and workspace fixes (third pass)
+
+A user reported that drawing rectangles was restricted to a small central area after the
+letterbox fix. Two causes, both fixed.
+
+1. **The bitmap was drawn at its raw pixel size.** `drawOrientedBitmap()` passed the
+   bitmap's source pixel dimensions straight through as the Compose destination size, while
+   the geometry mapped annotations against the smaller fitted rectangle — so the pixels and
+   the overlay did not share the same bounds. `OrientedBitmapLayout` now computes the draw
+   destination: the oriented dimensions for all four rotations, one uniform scale into the
+   fitted rectangle, the bitmap centred on `fitted.center`, and the rotation applied around
+   that same centre. The image is never stretched, and the axis-aligned bounds of the
+   rotated bitmap are exactly the fitted rectangle. The preview card and the annotation
+   canvas use the same renderer.
+2. **The workspace was a fixed 260 dp.** The canvas is now sized from the oriented aspect
+   ratio: a portrait capture gets a tall workspace that grows inside the scrollable page, a
+   landscape capture keeps a 240 dp minimum. The frame is never cropped and never stretched.
+
+Coordinate behaviour is unchanged and still pinned by tests: a letterbox touch is rejected at
+gesture start, a tap outside the fitted image is rejected, an in-progress move or resize is
+clamped to the image edge, and the create drag is deterministic.
+
+`FramePipeline.displayRotation` is now `@Volatile`, because it is written by the display
+listener's thread and read by the ImageReader thread. The pixel correction stays separate
+from the display metadata and remains `ROTATION_0` — no double rotation.
+
+The Vision Lab now explains its controls in place: *Freeze* locks the current frame before
+annotation, *Resume* returns to live frames, a *slot* is a manually marked region where a
+ban/pick hero portrait is expected, *Process Frame* resizes and prepares the frame only
+because no recognition exists yet, and a *calibration profile* saves and restores normalized
+slot coordinates for matching screen layouts. The "Detection: not implemented" notice stays.
 
 ## Physical-device status
 
