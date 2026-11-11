@@ -1,6 +1,7 @@
 package com.draftlens.feature.visionlab
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,9 +24,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.PointerInputScope
-import androidx.compose.ui.input.pointer.awaitFirstDown
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
-import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -96,7 +95,7 @@ fun AnnotationCanvas(
     modifier: Modifier = Modifier,
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
-    var pending by remember { mutableStateOf<Rect?>(null) }
+    var pending by remember { mutableStateOf<NormalizedRect?>(null) }
 
     val currentSlots by rememberUpdatedState(slots)
     val currentSelected by rememberUpdatedState(selectedSlotId)
@@ -254,6 +253,9 @@ fun AnnotationCanvas(
     }
 }
 
+/** The radius of the resize handles, in canvas pixels. */
+private val HANDLE_RADIUS = 6.dp
+
 /** The X control that deletes the selected slot. */
 private fun DrawScope.drawDeleteControl(
     geometry: CanvasGeometry,
@@ -300,7 +302,7 @@ private suspend fun PointerInputScope.annotationPointerInput(
     onResize: (String, NormalizedRect) -> Unit,
     onGestureStart: (String) -> Unit,
     onGestureEnd: () -> Unit,
-    onDrawing: (Rect?) -> Unit,
+    onDrawing: (NormalizedRect?) -> Unit,
 ) {
     awaitPointerEventScope {
         while (true) {
