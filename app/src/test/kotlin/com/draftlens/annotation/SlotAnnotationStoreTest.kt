@@ -64,8 +64,9 @@ class SlotAnnotationStoreTest {
     @Test fun `restoring a slot whose index is taken is refused`() {
         val store = store()
         val first = store.add(SlotType.BAN, SlotTeam.ALLY, rect(0.1f)).getOrThrow()
-        store.add(SlotType.BAN, SlotTeam.ALLY, rect(0.5f), index = 2).getOrThrow()
         store.delete(first.id)
+        // The index the deleted slot used is taken by another slot now.
+        store.add(SlotType.BAN, SlotTeam.ALLY, rect(0.5f), index = first.index).getOrThrow()
 
         val restored = store.restore(first)
 
