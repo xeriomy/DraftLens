@@ -21,21 +21,24 @@
       (`01603de`, `4c42513`)
 - [x] Sprint 1A.1 Vision Lab interaction redesign: explicit gesture state machine, contextual
       slot property editor, copy/paste/duplicate on an internal clipboard, delete control
-      with undo, grouped slot list with stable keys, fullscreen editor with zoom and pan,
-      slot colours (`927e8e0`, `dffc12d`)
+      with undo, grouped slot list with stable keys, fullscreen editor, slot colours
+      (`927e8e0`, `dffc12d`)
+- [x] Sprint 1A.1 corrections: the delete control replaced the top-right resize handle, the
+      long press opens the menu on its own timeout, the fullscreen editor lost zoom and fit
+      controls, and the page no longer scrolls during annotation (`24a43af`, `593eeb4`)
 
 Verification for Sprint 1A runs in GitHub Actions (ubuntu-latest, x86_64) because the
 authoring host is aarch64 and AGP's `aapt2` is an x86_64-only binary, so no Gradle task that
 touches resources can run locally. Draft PR: https://github.com/xeriomy/DraftLens/pull/2
 
 Executed commands (CI, `./gradlew`):
-- `./gradlew test` — 254 JVM unit tests, 0 failures, 0 errors, 0 skipped
+- `./gradlew test` — 258 JVM unit tests, 0 failures, 0 errors, 0 skipped
 - `./gradlew assembleAndroidTest` — instrumentation tests compiled, **not executed**
 - `./gradlew lint` — strict lint, `abortOnError = true`
 - `./gradlew assembleDebug` — debug APK, uploaded as the `draftlens-debug` artifact
 
-Latest green run: https://github.com/xeriomy/DraftLens/actions/runs/42955353155
-(head SHA `dffc12d`).
+Latest green run: https://github.com/xeriomy/DraftLens/actions/runs/43514508049
+(head SHA `593eeb4`).
 
 The frame sizing and rendering fix was confirmed by the user on a physical device before the
 Sprint 1A.1 work started and was left unchanged. The 1A.1 interaction changes have **not**

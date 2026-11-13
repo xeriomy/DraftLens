@@ -48,18 +48,26 @@ Rules that follow from it:
 - Only one slot is selected at a time, and the selection is the slot's stable id.
 - A tap never moves anything. A drag on an **unselected** rectangle selects it and stops
   there, so a drag can never move the wrong slot.
-- A stationary long press is never read as a move.
+- A stationary long press is never read as a move, and it opens the property editor
+  immediately when the timeout is reached.
 - A drag on empty space never creates a rectangle: creating requires the long press first.
 - A rectangle is never created outside the displayed image.
-- The pointer is only consumed once an annotation gesture is under way, so the page can still
-  be scrolled by dragging outside the image.
+- The canvas takes the gesture from the first touch, so **the page never scrolls while a
+  slot is being moved, resized or drawn**. The rest of the page scrolls normally.
 
 ### The selection
 
-The selected rectangle gets a stronger outline, a translucent fill, four corner resize
-handles and an **X** control at its top-right corner. The X is drawn in red and sits just
-outside the corner, so it can never be mistaken for a resize handle. Its touch target is
-larger than the drawn circle.
+The selected rectangle gets a stronger outline, a translucent fill and three resize handles:
+top-left, bottom-left and bottom-right.
+
+The **top-right corner carries exactly one control: the X that deletes the slot.** It sits
+on the corner where the top-right resize handle used to be — there is no handle behind or
+beside it, and nothing floats above the rectangle. The X is drawn in red, so it can never be
+mistaken for a handle, and its touch target is larger than the drawn circle.
+
+The missing top-right handle does not limit resizing: the top-left handle changes the width
+*and* the height, the bottom-right handle does the same from the other side, and the
+bottom-left handle changes the width alone.
 
 ### Colours and labels
 
@@ -74,9 +82,11 @@ Colour is never the only cue: every rectangle carries a readable label such as `
 
 ## The contextual property editor
 
-A long press on a rectangle opens a small editor next to it. It never occupies a permanent
-part of the canvas, and it positions itself inside the window, so it is never clipped
-off-screen in either orientation.
+A long press on a rectangle opens a small editor next to it. The menu appears **as soon as
+the long-press timeout is reached** — the finger does not have to move at all, and a small
+movement afterwards does not delay it either. It never occupies a permanent part of the
+canvas, and it positions itself inside the window, so it is never clipped off-screen in
+either orientation.
 
 It edits:
 
@@ -121,18 +131,18 @@ needs. The index is always configurable and a duplicate `(type, team, index)` is
 ## Fullscreen annotation editor
 
 *Fullscreen* opens the image on its own screen, in whichever orientation the device is in.
+The button is a compact icon in the corner of the canvas card.
 
-- The image gets the whole screen and is fitted inside it.
-- A pinch with two fingers zooms and pans; the single-finger gestures stay with the
-  annotation model, so editing and navigating never fight over the same pointer.
-- The overlay stays aligned with the pixels while zooming and panning, because both are
-  drawn under the same transform and pointer positions are mapped back through its inverse.
-- *Fit to screen* resets the view; *Reset zoom* resets the zoom.
-- The controls sit in a compact row in the corner and never cover the annotation area.
-- *Done* leaves the editor and returns to the Vision Lab page.
-
-The freeze and live-frame behaviour is unchanged: the editor shows the same frame as the
-page it came from.
+- The image and the canvas fill the available phone screen, using the maximum width and
+  height, with the aspect ratio preserved.
+- The slot overlays stay perfectly aligned with the image.
+- There is no zoom and no pan: the frame is fitted into the screen, and nothing about the
+  view is adjusted while editing.
+- Only the essential controls are visible: a compact collapse icon in the corner and the
+  dismissible gesture hint.
+- The collapse icon returns to the embedded editor and the previous screen arrangement.
+- Android Back leaves the fullscreen editor first, and only then the Vision Lab.
+- The orientation is never forced.
 
 ## What the controls mean
 

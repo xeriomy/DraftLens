@@ -24,9 +24,9 @@ The run also prints the unit-test totals and uploads the APK as the `draftlens-d
 artifact, then re-reads the packaged manifest to confirm the foreground-service permissions
 and the `mediaProjection` service type survived the build.
 
-Latest green run: <https://github.com/xeriomy/DraftLens/actions/runs/42955353155>
-— head SHA `dffc12dd4f4ccebf3d70dd0d37b57bed25b812f8`, **254 unit tests, 0 failures, 0 errors,
-0 skipped**, executed in both the debug and the release unit-test variants (508 test
+Latest green run: <https://github.com/xeriomy/DraftLens/actions/runs/43514508049>
+— head SHA `593eeb43315ea40a27d55c248bc914aeb3b8a3c8`, **258 unit tests, 0 failures, 0 errors,
+0 skipped**, executed in both the debug and the release unit-test variants (516 test
 executions in total).
 
 The APK artifact digest is reported in the implementation report and in the pull request.
@@ -51,9 +51,9 @@ The APK artifact digest is reported in the implementation report and in the pull
 | Canvas gestures | `feature/visionlab/AnnotationGeometryTest.kt` | a created rectangle spans the two drag points in either direction, is clamped to the unit square and is discarded below the minimum size; a resize moves only the dragged corner and is refused when it would collapse the rectangle |
 | Canvas workspace | `feature/visionlab/AnnotationGeometryTest.kt` | a portrait frame gets a tall workspace; a landscape frame keeps the minimum workspace height; an unknown ratio falls back to the minimum |
 | Annotation interaction | `feature/visionlab/AnnotationInteractionTest.kt` | a tap selects a slot; a tap on empty space does nothing; a drag on the selected slot moves it; a drag on an unselected slot selects it and never moves it; a movement below the touch slop never starts a move; a long press on a slot opens its menu and is not a move; a long press on empty space starts drawing; drawing produces a rectangle on release and nothing without one; the delete control deletes that slot; a handle drag resizes and never moves; a press outside the image does nothing |
-| Annotation targets | `feature/visionlab/AnnotationInteractionTest.kt` | a point on a slot resolves to that slot; empty image space resolves to empty; a point outside the image resolves to outside; the delete control wins over the slot itself; a resize handle resolves to that handle |
-| View transform | `feature/visionlab/AnnotationViewTransformTest.kt` | the inverse undoes the forward mapping; the identity transform changes nothing; the zoom is clamped to the usable range |
-| Slot placement | `feature/visionlab/AnnotationViewTransformTest.kt` | an offset slot stays inside the image and keeps its size; an offset slot is moved away from its source |
+| Annotation targets | `feature/visionlab/AnnotationInteractionTest.kt` | a point on a slot resolves to that slot; empty image space resolves to empty; a point outside the image resolves to outside; the delete control wins over the slot itself; the delete control sits exactly where the top-right handle was; the top-right corner has no resize handle; the remaining handles are still there; a resize handle resolves to that handle |
+| Long press | `feature/visionlab/AnnotationInteractionTest.kt` | a long press opens the menu without any movement; a slight movement after the long press neither delays nor repeats the menu; a normal tap never opens the menu; moving a selected slot never opens the menu |
+| Slot placement | `feature/visionlab/SlotPlacementTest.kt` | an offset slot stays inside the image and keeps its size; an offset slot is moved away from its source |
 | Slot restore | `annotation/SlotAnnotationStoreTest.kt` | a deleted slot is restored with its own id and metadata; restoring a slot whose index or id is taken is refused |
 | Canvas hit testing | `feature/visionlab/AnnotationHitTestTest.kt` | the topmost slot wins where rectangles overlap |
 | Vision Lab state | `feature/visionlab/VisionLabViewModelTest.kt` | live frame exposure, freeze/resume/clear, clear cancels in-flight processing, processing success and failure, stale-result discard, profile save/update/apply require a frozen frame, profile save refusal, delete-all escape hatch, apply compatibility, selecting a slot by id, deleting an arbitrary slot, undo of a deletion and of a creation, copy/paste with a new id and the next free index, duplicate keeping the source, the pasted slot staying inside the image, the menu opening for an existing slot, an undoable move |

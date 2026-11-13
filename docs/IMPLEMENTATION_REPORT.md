@@ -97,6 +97,26 @@ The frame sizing and rendering fix, the letterbox rejection, the source-normaliz
 coordinate semantics, the display-rotation handling, the calibration codecs and the capture
 lifecycle were not rewritten.
 
+### Sprint 1A.1 corrections
+
+Four corrections were applied on top of the interaction rework.
+
+1. **The delete control replaces the top-right resize handle.** The top-right handle is gone
+   and the X sits on exactly that corner, so the corner carries one control and not two.
+   The remaining handles — top-left, bottom-left, bottom-right — still change the width and
+   the height from either side, so nothing became unreachable.
+2. **The long press opens the property menu immediately.** The long press is detected on its
+   own timeout instead of waiting for a pointer event, so the menu no longer needs the
+   finger to move first, and a small movement afterwards neither delays nor repeats it.
+3. **Fullscreen editing was simplified.** Pinch-to-zoom, pan, *Fit to screen* and *Reset
+   zoom* were removed together with the view-transform state they needed. The fullscreen
+   entry is now a compact icon, the editor fills the screen, a collapse icon leaves it, and
+   Android Back leaves the editor before the Vision Lab.
+4. **The page no longer scrolls during annotation.** The canvas takes the pointer from the
+   first touch, so moving, resizing and drawing a slot never scrolls the page. Scrolling
+   stays available everywhere else, and the fullscreen canvas is not inside a scrolling
+   parent at all.
+
 ---
 
 ## Verification actually performed
@@ -110,9 +130,9 @@ touches resources can run there — verified as
 
 | | |
 |---|---|
-| Run | **42955353155** — <https://github.com/xeriomy/DraftLens/actions/runs/42955353155> |
-| Tested head SHA | `dffc12dd4f4ccebf3d70dd0d37b57bed25b812f8` |
-| Unit tests | 254 tests · 0 failures · 0 errors · 0 skipped (508 executions, debug + release variants) |
+| Run | **43514508049** — <https://github.com/xeriomy/DraftLens/actions/runs/43514508049> |
+| Tested head SHA | `593eeb43315ea40a27d55c248bc914aeb3b8a3c8` |
+| Unit tests | 258 tests · 0 failures · 0 errors · 0 skipped (516 executions, debug + release variants) |
 | Other gates | `assembleAndroidTest`, strict `lint`, `assembleDebug` — all green |
 
 ### Run history
@@ -145,6 +165,8 @@ touches resources can run there — verified as
 | `42953552163` | `927e8e0` | failure | the interaction rework did not compile: wrong pointer imports and a rectangle type mismatch |
 | `42954140054` | `0762e96` | failure | 1 test expected a duplicate index that was not actually taken |
 | `42955353155` | `dffc12d` | success | interaction rework green |
+| `43513876694` | `24a43af` | failure | the annotation icons gave a `StrokeCap` where a `StrokeJoin` was expected |
+| `43514508049` | `593eeb4` | success | corrections green |
 | `42943730823` | `4c42513` | **success** | canvas rendering and workspace fixes green |
 
 Green run tasks: `./gradlew test`, `./gradlew assembleAndroidTest`, `./gradlew lint`

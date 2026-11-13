@@ -28,7 +28,11 @@ calibration profiles. No recognition, no recommendations, no overlays.
 - [x] Sprint 1A.1 interaction redesign (`927e8e0`, `dffc12d`): an explicit gesture state
       machine, a contextual slot property editor with copy/paste/duplicate on an internal
       clipboard, a delete control with undo, a grouped slot list keyed by slot id, a
-      fullscreen editor with zoom and pan, and team colours
+      fullscreen editor, and team colours
+- [x] Sprint 1A.1 corrections (`24a43af`, `593eeb4`): the delete control took over the
+      top-right resize handle, the long press opens the menu on its own timeout, the
+      fullscreen editor lost its zoom and fit controls, and the canvas no longer lets the
+      page scroll during annotation
 
 ### Sprint 1A verification
 CI (GitHub Actions, ubuntu-latest x86_64) is the build of record: `test`,
