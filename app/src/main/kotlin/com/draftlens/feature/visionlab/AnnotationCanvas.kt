@@ -299,13 +299,11 @@ private suspend fun PointerInputScope.annotationPointerInput(
             val imageRect = fitted()
             if (imageRect.width <= 0f || imageRect.height <= 0f) continue
 
-            fun toCanvas(position: Offset): Offset = position
-
             val startScreen = down.position
             val target = AnnotationTargetResolver.resolve(
                 geometry = geo,
                 fitted = imageRect,
-                offset = toCanvas(startScreen),
+                offset = startScreen,
                 slots = slots(),
                 selectedSlotId = selected(),
                 handleRadiusPx = handleRadius,
@@ -326,7 +324,7 @@ private suspend fun PointerInputScope.annotationPointerInput(
             state.slotId?.let { onGestureStart(it) }
             var longPressFired = false
             var slopExceeded = false
-            var lastNormalized = geo.canvasToNormalizedClamped(toCanvas(startScreen), imageRect)
+            var lastNormalized = geo.canvasToNormalizedClamped(startScreen, imageRect)
             var drawnRect: NormalizedRect? = null
             val clock = TimeSource.Monotonic
             val startedAt = clock.markNow()
@@ -361,7 +359,7 @@ private suspend fun PointerInputScope.annotationPointerInput(
                     if (result.action != AnnotationAction.None) onAction(result.action)
                 }
 
-                val canvasPosition = toCanvas(screenPosition)
+                val canvasPosition = screenPosition
                 val normalized = geo.canvasToNormalizedClamped(canvasPosition, imageRect)
 
                 when (state.phase) {
@@ -392,7 +390,7 @@ private suspend fun PointerInputScope.annotationPointerInput(
 
                     AnnotationInteraction.Phase.Drawing -> {
                         val point = geo.canvasToNormalized(canvasPosition, imageRect)
-                        val start = geo.canvasToNormalized(toCanvas(startScreen), imageRect)
+                        val start = geo.canvasToNormalized(startScreen, imageRect)
                         if (point != null && start != null) {
                             drawnRect = NormalizedRect(
                                 left = min(start.x, point.x),
