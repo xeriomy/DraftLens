@@ -130,8 +130,8 @@ touches resources can run there — verified as
 
 | | |
 |---|---|
-| Run | **43514508049** — <https://github.com/xeriomy/DraftLens/actions/runs/43514508049> |
-| Tested head SHA | `593eeb43315ea40a27d55c248bc914aeb3b8a3c8` |
+| Run | **43515376361** — <https://github.com/xeriomy/DraftLens/actions/runs/43515376361> |
+| Tested head SHA | `e1aca691e169a9109f972fb4ffd0d25e14cc8727` |
 | Unit tests | 258 tests · 0 failures · 0 errors · 0 skipped (516 executions, debug + release variants) |
 | Other gates | `assembleAndroidTest`, strict `lint`, `assembleDebug` — all green |
 
@@ -167,6 +167,7 @@ touches resources can run there — verified as
 | `42955353155` | `dffc12d` | success | interaction rework green |
 | `43513876694` | `24a43af` | failure | the annotation icons gave a `StrokeCap` where a `StrokeJoin` was expected |
 | `43514508049` | `593eeb4` | success | corrections green |
+| `43515376361` | `e1aca69` | **success** | final: corrections plus a small cleanup |
 | `42943730823` | `4c42513` | **success** | canvas rendering and workspace fixes green |
 
 Green run tasks: `./gradlew test`, `./gradlew assembleAndroidTest`, `./gradlew lint`

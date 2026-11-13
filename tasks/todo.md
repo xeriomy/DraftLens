@@ -37,8 +37,8 @@ Executed commands (CI, `./gradlew`):
 - `./gradlew lint` — strict lint, `abortOnError = true`
 - `./gradlew assembleDebug` — debug APK, uploaded as the `draftlens-debug` artifact
 
-Latest green run: https://github.com/xeriomy/DraftLens/actions/runs/43514508049
-(head SHA `593eeb4`).
+Latest green run: https://github.com/xeriomy/DraftLens/actions/runs/43515376361
+(head SHA `e1aca69`).
 
 The frame sizing and rendering fix was confirmed by the user on a physical device before the
 Sprint 1A.1 work started and was left unchanged. The 1A.1 interaction changes have **not**

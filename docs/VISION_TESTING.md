@@ -24,8 +24,8 @@ The run also prints the unit-test totals and uploads the APK as the `draftlens-d
 artifact, then re-reads the packaged manifest to confirm the foreground-service permissions
 and the `mediaProjection` service type survived the build.
 
-Latest green run: <https://github.com/xeriomy/DraftLens/actions/runs/43514508049>
-— head SHA `593eeb43315ea40a27d55c248bc914aeb3b8a3c8`, **258 unit tests, 0 failures, 0 errors,
+Latest green run: <https://github.com/xeriomy/DraftLens/actions/runs/43515376361>
+— head SHA `e1aca691e169a9109f972fb4ffd0d25e14cc8727`, **258 unit tests, 0 failures, 0 errors,
 0 skipped**, executed in both the debug and the release unit-test variants (516 test
 executions in total).
 
