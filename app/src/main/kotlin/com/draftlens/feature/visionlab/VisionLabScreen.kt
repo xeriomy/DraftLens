@@ -16,6 +16,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -209,7 +211,13 @@ private fun AnnotationCanvasCard(state: VisionLabUiState, vm: VisionLabViewModel
                     color = Color.White,
                     modifier = Modifier.weight(1f),
                 )
-                OutlinedButton(onClick = { vm.openFullscreenEditor() }) { Text("Fullscreen") }
+                IconButton(onClick = { vm.openFullscreenEditor() }) {
+                    Icon(
+                        imageVector = ExpandIconVector,
+                        contentDescription = "Fullscreen annotation",
+                        tint = Color.White,
+                    )
+                }
             }
             if (showHint) {
                 AnnotationGestureHint(onDismiss = { showHint = false })

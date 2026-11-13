@@ -113,27 +113,22 @@ data class CanvasGeometry(
     /**
      * The centre of the delete control for [slot], in canvas coordinates.
      *
-     * The control sits just outside the top-right corner of the selection and is kept
-     * inside the displayed image so it can never be clipped away.
+     * The control sits exactly where the top-right resize handle used to be, so the
+     * corner carries one control and not two.
      */
-    fun deleteControlCenter(slot: NormalizedRect, fitted: Rect, radiusPx: Float): Offset {
-        val bounds = normalizedToCanvas(slot, fitted)
-        val minX = fitted.left + radiusPx
-        val maxX = fitted.right - radiusPx
-        val minY = fitted.top + radiusPx
-        val maxY = fitted.bottom - radiusPx
-        val x = if (minX <= maxX) (bounds.right + radiusPx * 0.5f).coerceIn(minX, maxX) else fitted.center.x
-        val y = if (minY <= maxY) (bounds.top - radiusPx * 0.5f).coerceIn(minY, maxY) else fitted.center.y
-        return Offset(x, y)
-    }
+    fun deleteControlCenter(slot: NormalizedRect, fitted: Rect): Offset =
+        normalizedToCanvas(slot, fitted).topRight
 
-    /** Corner handle under the pointer, if any. */
+    /**
+     * Corner handle under the pointer, if any.
+     *
+     * The top-right corner has no handle: the delete control lives there instead.
+     */
     fun handleAt(rect: NormalizedRect, offset: Offset, fitted: Rect, radius: Float): Corner? {
         val bounds = normalizedToCanvas(rect, fitted)
         val touch = radius * 2f
         val corners = listOf(
             Corner.TOP_LEFT to bounds.topLeft,
-            Corner.TOP_RIGHT to Offset(bounds.right, bounds.top),
             Corner.BOTTOM_LEFT to Offset(bounds.left, bounds.bottom),
             Corner.BOTTOM_RIGHT to bounds.bottomRight,
         )

@@ -207,7 +207,7 @@ object AnnotationTargetResolver {
     ): AnnotationTarget {
         val selected = slots.firstOrNull { it.id == selectedSlotId }
         if (selected != null) {
-            val delete = geometry.deleteControlCenter(selected.rect, fitted, DELETE_CONTROL_RADIUS_PX)
+            val delete = geometry.deleteControlCenter(selected.rect, fitted)
             if ((offset - delete).getDistance() <= DELETE_CONTROL_RADIUS_PX * 1.5f) {
                 return AnnotationTarget.Delete(selected.id)
             }

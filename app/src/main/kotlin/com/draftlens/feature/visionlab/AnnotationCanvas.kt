@@ -22,7 +22,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
@@ -42,8 +41,10 @@ import com.draftlens.vision.annotation.SlotType
 import com.draftlens.vision.geometry.NormalizedRect
 import com.draftlens.vision.model.OriginalFrame
 import com.draftlens.vision.model.android.BitmapFramePayload
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.time.TimeSource
 
 /**
  * The actions the contextual property editor can perform on a slot.
@@ -90,7 +91,6 @@ fun AnnotationCanvas(
     onGestureStart: (String) -> Unit = {},
     onGestureEnd: () -> Unit = {},
     menuActions: SlotMenuActions? = null,
-    viewTransform: AnnotationViewTransform = AnnotationViewTransform(),
     workspaceMode: AnnotationWorkspaceMode = AnnotationWorkspaceMode.Aspect,
     modifier: Modifier = Modifier,
 ) {
@@ -100,7 +100,6 @@ fun AnnotationCanvas(
     val currentSlots by rememberUpdatedState(slots)
     val currentSelected by rememberUpdatedState(selectedSlotId)
     val currentMenu by rememberUpdatedState(menuSlotId)
-    val currentTransform by rememberUpdatedState(viewTransform)
     // Keyed on the frame's shape, not its identity: a new frame of the same size and
     // rotation must not restart the gesture detectors.
     val geometry = remember(frame?.sourceWidth, frame?.sourceHeight, frame?.rotation) {
@@ -141,7 +140,6 @@ fun AnnotationCanvas(
                             fitted = { fitted },
                             slots = { currentSlots },
                             selected = { currentSelected },
-                            transform = { currentTransform },
                             handleRadius = handleRadius,
                             onAction = { action ->
                                 when (action) {
@@ -203,9 +201,9 @@ fun AnnotationCanvas(
 
                     slots.firstOrNull { it.id == selectedSlotId }?.let { slot ->
                         val bounds = geo.normalizedToCanvas(slot.rect, fitted)
+                        // The top-right corner carries the delete control, so it has no handle.
                         listOf(
                             bounds.topLeft,
-                            Offset(bounds.right, bounds.top),
                             Offset(bounds.left, bounds.bottom),
                             bounds.bottomRight,
                         ).forEach { corner ->
@@ -225,16 +223,7 @@ fun AnnotationCanvas(
                     }
                 }
 
-                if (currentTransform.isIdentity) {
-                    drawContent()
-                } else {
-                    withTransform({
-                        translate(currentTransform.offset.x, currentTransform.offset.y)
-                        scale(currentTransform.scale, currentTransform.scale, fitted.center)
-                    }) {
-                        drawContent()
-                    }
-                }
+                drawContent()
             }
 
             // The contextual property editor is anchored to the slot it belongs to.
@@ -256,14 +245,14 @@ fun AnnotationCanvas(
 /** The radius of the resize handles, in canvas pixels. */
 private val HANDLE_RADIUS = 6.dp
 
-/** The X control that deletes the selected slot. */
+/** The X control that deletes the selected slot; it sits on the top-right corner. */
 private fun DrawScope.drawDeleteControl(
     geometry: CanvasGeometry,
     slot: DraftSlot,
     fitted: Rect,
 ) {
     val radius = AnnotationTargetResolver.DELETE_CONTROL_RADIUS_PX
-    val center = geometry.deleteControlCenter(slot.rect, fitted, radius)
+    val center = geometry.deleteControlCenter(slot.rect, fitted)
     drawCircle(color = Color(0xFFD32F2F), radius = radius, center = center)
     val arm = radius * 0.5f
     drawLine(
@@ -295,7 +284,6 @@ private suspend fun PointerInputScope.annotationPointerInput(
     fitted: () -> Rect,
     slots: () -> List<DraftSlot>,
     selected: () -> String?,
-    transform: () -> AnnotationViewTransform,
     handleRadius: Float,
     onAction: (AnnotationAction) -> Unit,
     onMove: (String, Float, Float) -> Unit,
@@ -311,14 +299,7 @@ private suspend fun PointerInputScope.annotationPointerInput(
             val imageRect = fitted()
             if (imageRect.width <= 0f || imageRect.height <= 0f) continue
 
-            fun toCanvas(position: Offset): Offset {
-                val current = transform()
-                return if (current.isIdentity) {
-                    position
-                } else {
-                    current.inverse(position, imageRect.center)
-                }
-            }
+            fun toCanvas(position: Offset): Offset = position
 
             val startScreen = down.position
             val target = AnnotationTargetResolver.resolve(
@@ -338,32 +319,40 @@ private suspend fun PointerInputScope.annotationPointerInput(
                 continue
             }
 
+            // The canvas owns the gesture from the first touch, so the page cannot scroll
+            // away while a slot is being moved, resized or drawn.
+            down.consume()
+
             state.slotId?.let { onGestureStart(it) }
             var longPressFired = false
             var slopExceeded = false
             var lastNormalized = geo.canvasToNormalizedClamped(toCanvas(startScreen), imageRect)
             var drawnRect: NormalizedRect? = null
+            val clock = TimeSource.Monotonic
+            val startedAt = clock.markNow()
 
             while (true) {
-                val event = awaitPointerEvent()
-                // A second pointer means a pinch or a two-finger pan: the annotation
-                // gesture gives way to the view transform.
-                if (event.changes.count { it.pressed } > 1) break
+                // The long press fires on its own timeout, without waiting for a movement.
+                val elapsed = startedAt.elapsedNow().inWholeMilliseconds
+                val remaining = interaction.longPressTimeoutMs - elapsed
+                val event = if (!longPressFired && remaining > 0L) {
+                    withTimeoutOrNull(remaining) { awaitPointerEvent() }
+                } else {
+                    awaitPointerEvent()
+                }
+                if (event == null) {
+                    longPressFired = true
+                    val result = interaction.longPress(state)
+                    state = result.state
+                    if (result.action != AnnotationAction.None) onAction(result.action)
+                    continue
+                }
+
                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                 if (change.changedToUpIgnoreConsumed()) break
 
                 val screenPosition = change.position
                 val distance = (screenPosition - startScreen).getDistance()
-
-                if (!longPressFired &&
-                    distance <= interaction.touchSlopPx &&
-                    change.uptimeMillis - down.uptimeMillis >= interaction.longPressTimeoutMs
-                ) {
-                    longPressFired = true
-                    val result = interaction.longPress(state)
-                    state = result.state
-                    if (result.action != AnnotationAction.None) onAction(result.action)
-                }
 
                 if (!slopExceeded && distance > interaction.touchSlopPx) {
                     slopExceeded = true

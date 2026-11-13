@@ -8,6 +8,7 @@ import com.draftlens.vision.annotation.SlotTeam
 import com.draftlens.vision.annotation.SlotType
 import com.draftlens.vision.geometry.NormalizedRect
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -68,6 +69,42 @@ class AnnotationInteractionTest {
 
         assertEquals(AnnotationInteraction.Phase.Menu, longPress.state.phase)
         assertEquals(AnnotationAction.OpenMenu("a"), longPress.action)
+    }
+
+    @Test fun `a long press opens the menu without any movement`() {
+        val down = interaction.down(AnnotationTarget.Slot("a", rect), selectedSlotId = "a")
+        // No drag, no movement: the timeout alone opens the menu.
+        val longPress = interaction.longPress(down.state)
+
+        assertEquals(AnnotationAction.OpenMenu("a"), longPress.action)
+        assertEquals(AnnotationInteraction.Phase.Menu, longPress.state.phase)
+    }
+
+    @Test fun `a slight movement after the long press does not delay or repeat the menu`() {
+        val down = interaction.down(AnnotationTarget.Slot("a", rect), selectedSlotId = "a")
+        val longPress = interaction.longPress(down.state)
+        assertEquals(AnnotationAction.OpenMenu("a"), longPress.action)
+
+        val afterMovement = interaction.drag(longPress.state, distancePx = 3f)
+
+        assertEquals(AnnotationInteraction.Phase.Menu, afterMovement.state.phase)
+        assertEquals(AnnotationAction.None, afterMovement.action)
+    }
+
+    @Test fun `a normal tap never opens the menu`() {
+        val down = interaction.down(AnnotationTarget.Slot("a", rect), selectedSlotId = "a")
+        val up = interaction.up(down.state)
+
+        assertEquals(AnnotationAction.Select("a"), up.action)
+        assertFalse(up.action is AnnotationAction.OpenMenu)
+    }
+
+    @Test fun `moving a selected slot never opens the menu`() {
+        val down = interaction.down(AnnotationTarget.Slot("a", rect), selectedSlotId = "a")
+        val drag = interaction.drag(down.state, distancePx = 40f)
+
+        assertEquals(AnnotationInteraction.Phase.Moving, drag.state.phase)
+        assertFalse(drag.action is AnnotationAction.OpenMenu)
     }
 
     @Test fun `a stationary long press on a slot is not a move`() {
@@ -199,11 +236,7 @@ class AnnotationTargetResolverTest {
 
     @Test fun `the delete control of the selected slot wins over the slot itself`() {
         val selected = slot("a")
-        val delete = geometry.deleteControlCenter(
-            selected.rect,
-            fitted,
-            AnnotationTargetResolver.DELETE_CONTROL_RADIUS_PX,
-        )
+        val delete = geometry.deleteControlCenter(selected.rect, fitted)
         val target = AnnotationTargetResolver.resolve(
             geometry = geometry,
             fitted = fitted,
@@ -213,6 +246,40 @@ class AnnotationTargetResolverTest {
             handleRadiusPx = 12f,
         )
         assertEquals(AnnotationTarget.Delete("a"), target)
+    }
+
+    @Test fun `the delete control sits exactly where the top right handle was`() {
+        val selected = slot("a")
+        val bounds = geometry.normalizedToCanvas(selected.rect, fitted)
+
+        assertEquals(bounds.topRight, geometry.deleteControlCenter(selected.rect, fitted))
+    }
+
+    @Test fun `the top right corner has no resize handle`() {
+        val selected = slot("a")
+        val bounds = geometry.normalizedToCanvas(selected.rect, fitted)
+
+        val handle = geometry.handleAt(selected.rect, bounds.topRight, fitted, radius = 12f)
+
+        assertNull(handle)
+    }
+
+    @Test fun `the remaining resize handles are still there`() {
+        val selected = slot("a")
+        val bounds = geometry.normalizedToCanvas(selected.rect, fitted)
+
+        assertEquals(
+            Corner.TOP_LEFT,
+            geometry.handleAt(selected.rect, bounds.topLeft, fitted, radius = 12f),
+        )
+        assertEquals(
+            Corner.BOTTOM_LEFT,
+            geometry.handleAt(selected.rect, Offset(bounds.left, bounds.bottom), fitted, radius = 12f),
+        )
+        assertEquals(
+            Corner.BOTTOM_RIGHT,
+            geometry.handleAt(selected.rect, bounds.bottomRight, fitted, radius = 12f),
+        )
     }
 
     @Test fun `a resize handle of the selected slot resolves to that handle`() {
