@@ -1,4 +1,46 @@
-# Implementation Plan: DraftLens Sprint 0 — Android Foundation & Live Capture PoC
+# Implementation Plan: DraftLens
+
+## Sprint 1A — Vision Foundation, Preprocessing & Vision Lab
+**Objective:** Give the app a real image-bearing foundation — non-null frames, tested
+geometry, validated preprocessing, manual slot annotation, a Vision Lab, and versioned
+calibration profiles. No recognition, no recommendations, no overlays.
+
+### Work items in order
+- [x] Task 1: Vision model and geometry value types (`a2731d3`)
+- [x] Task 2: Rotation-aware geometry and round trips (`357a40f`)
+- [x] Task 3: Non-null capture frames plus display rotation (`8e1381a`)
+- [x] Task 4: Validated preprocessing engine (`79bd211`, `41aa126`, `b81e740`)
+- [x] Task 5: Manual slot annotations and JSON codec (`1086b75`, `cab3d8d`)
+- [x] Task 6: Versioned calibration profiles (`08ca414` reviewed, completed in `b84b69f`, `85f04c8`)
+- [x] Task 7: Vision frame source and ViewModel (`fedaa4e`, `ec24a9a`, `0c7d286`, `b4c8c78`)
+- [x] Task 8: Compose Vision Lab (`6ad2287`, `45e2f2c`, `691b9d2`)
+- [x] Task 9: Vision documentation (`303b818`, `da35ca0`)
+- [x] Task 10: CI, PR, APK artifact, implementation report
+- [x] Final whole-branch review; findings fixed in `691b9d2` with a failing test each
+- [x] Focused review fixes (`8f046c0`, `313775d`, `007621f`): display rotation updated
+      independently of the capture size, canvas letterbox rejected, Clear cancels in-flight
+      processing, shared slot validator for calibration documents, frozen-frame required for
+      profile save/update/apply, documentation and CI record updated
+- [x] Canvas rendering and workspace fixes (`01603de`, `4c42513`): the bitmap is scaled
+      uniformly into the fitted rectangle so the pixels and the overlay share one set of
+      bounds, the canvas is sized from the oriented aspect ratio, `displayRotation` is
+      `@Volatile`, and the Vision Lab explains its controls in place
+- [x] Sprint 1A.1 interaction redesign (`927e8e0`, `dffc12d`): an explicit gesture state
+      machine, a contextual slot property editor with copy/paste/duplicate on an internal
+      clipboard, a delete control with undo, a grouped slot list keyed by slot id, a
+      fullscreen editor, and team colours
+- [x] Sprint 1A.1 corrections (`24a43af`, `593eeb4`): the delete control took over the
+      top-right resize handle, the long press opens the menu on its own timeout, the
+      fullscreen editor lost its zoom and fit controls, and the canvas no longer lets the
+      page scroll during annotation
+
+### Sprint 1A verification
+CI (GitHub Actions, ubuntu-latest x86_64) is the build of record: `test`,
+`assembleAndroidTest`, `lint`, `assembleDebug`, plus a `draftlens-debug` APK artifact.
+The authoring host is aarch64 and AGP 8.6.1 ships only an x86_64 `aapt2`, so no Gradle
+task that touches resources can run there. Instrumentation tests are compiled, not executed:
+no device or emulator was available. Physical-device verification of the Vision Lab is
+**pending**.
 
 ## Sprint 0.1 — Capture Hardening & Technical Cleanup
 **Objective:** Harden the reported-working capture path before Vision Engine. No recognition,
@@ -62,7 +104,7 @@ grow without re-architecture.
 - [x] Task 8: Detection stub interfaces (NotImplemented states)
 
 ### Phase 4: Docs + verify
-- [x] Task 9: README, ARCHITECTURE, SCREEN_CAPTURE, DATA_SOURCES (verified live), PRIVACY, ADR-001
+- [x] Task 9: README, ARCHITECTURE, SCREEN_CAPTURE, DATA_SOURCES (verified live), ADR-001
 - [x] Task 10: Tests pass, lint passes, debug APK built, manifest verified, report written
 
 ## Risks and Mitigations

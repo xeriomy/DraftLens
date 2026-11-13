@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -35,6 +34,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.draftlens.capture.CaptureController
 import com.draftlens.datastore.AppPreferencesRepository
 import com.draftlens.models.CaptureStatus
+import com.draftlens.vision.model.android.BitmapFramePayload
 
 @Composable
 fun DebugCaptureScreen(
@@ -67,7 +67,6 @@ fun DebugCaptureScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .statusBarsPadding()
             .navigationBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -141,20 +140,20 @@ fun DebugCaptureScreen(
                         .background(Color(0xFF111621)),
                     contentAlignment = Alignment.Center
                 ) {
-                    frame?.let { f ->
-                        val bitmap = f.bitmap
-                        if (bitmap != null && !bitmap.isRecycled) {
-                            Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "Latest captured frame",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Fit
-                            )
-                        }
-                    } ?: Text(
-                        "No frame yet. Start capture to see live preview.",
-                        color = Color.Gray
-                    )
+                    val payload = frame?.frame?.payload as? BitmapFramePayload
+                    if (payload != null) {
+                        Image(
+                            bitmap = payload.bitmap.asImageBitmap(),
+                            contentDescription = "Latest captured frame",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+                    } else {
+                        Text(
+                            "No frame yet. Start capture to see live preview.",
+                            color = Color.Gray
+                        )
+                    }
                 }
             }
         }
