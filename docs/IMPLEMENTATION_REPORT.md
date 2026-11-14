@@ -178,10 +178,11 @@ touches resources can run there — verified as
 
 | | |
 |---|---|
-| Run | **43515376361** — <https://github.com/xeriomy/DraftLens/actions/runs/43515376361> |
-| Tested head SHA | `e1aca691e169a9109f972fb4ffd0d25e14cc8727` |
-| Unit tests | 258 tests · 0 failures · 0 errors · 0 skipped (516 executions, debug + release variants) |
+| Run | **43641588245** — <https://github.com/xeriomy/DraftLens/actions/runs/43641588245> |
+| Tested head SHA | `25307b8b8b1e8d2d328b6c5ce25684e0876b59af` |
+| Unit tests | 273 tests · 0 failures · 0 errors · 0 skipped (546 executions, debug + release variants) |
 | Other gates | `assembleAndroidTest`, strict `lint`, `assembleDebug` — all green |
+| APK artifact | `draftlens-debug` · 10 216 362 bytes · digest `sha256:1cc5c7325627877926c6449eb61a0d420c66df1a92c253dd99e392eb3ebc2fad` · APK SHA-256 `913e8b95189229d0ce970c2ad5878cfeef62bc919e4cda5ea3c408cc3e49846b` |
 
 ### Run history
 
@@ -216,6 +217,8 @@ touches resources can run there — verified as
 | `43513876694` | `24a43af` | failure | the annotation icons gave a `StrokeCap` where a `StrokeJoin` was expected |
 | `43514508049` | `593eeb4` | success | corrections green |
 | `43515376361` | `e1aca69` | **success** | final: corrections plus a small cleanup |
+| `43516005404` | `c9a2cef` | **success** | documentation-only pointer before the 1A.2 pass |
+| `43641588245` | `25307b8` | **success** | Sprint 1A.2 bug fixes green |
 | `42943730823` | `4c42513` | **success** | canvas rendering and workspace fixes green |
 
 Green run tasks: `./gradlew test`, `./gradlew assembleAndroidTest`, `./gradlew lint`
@@ -291,6 +294,10 @@ slot coordinates for matching screen layouts. The "Detection: not implemented" n
 
 - **Sprint 1A: NOT RUN.** The Vision Lab, the annotation canvas, overlay alignment on a real
   screen and the calibration flow were not exercised on hardware.
+- **Sprint 1A.1 / 1A.2 interaction changes: NOT RUN.** The interaction redesign and the
+  bug-fix pass were not verified on a physical device; the delete control's 48 dp target,
+  the long-press cancellation and the property editor's error feedback remain unconfirmed
+  on hardware.
 - **Sprint 0: PARTIAL, maintainer-reported.** Capture and live preview were reported working
   on a physical device; device model, Android version, frame counts and measurements were not
   supplied, so full PASS is not claimed.

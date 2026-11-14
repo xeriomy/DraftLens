@@ -26,22 +26,28 @@
 - [x] Sprint 1A.1 corrections: the delete control replaced the top-right resize handle, the
       long press opens the menu on its own timeout, the fullscreen editor lost zoom and fit
       controls, and the page no longer scrolls during annotation (`24a43af`, `593eeb4`)
+- [x] Sprint 1A.2 bug fixes: paste reads from the clipboard with the target only anchoring
+      placement, the property menu selects the same slot it shows and opens on slot
+      creation, density-aware 48 dp delete control, an early drag cancels the pending long
+      press, one rotation snapshot per captured frame, validation failures surfaced in the
+      property editor (`25307b8`)
 
 Verification for Sprint 1A runs in GitHub Actions (ubuntu-latest, x86_64) because the
 authoring host is aarch64 and AGP's `aapt2` is an x86_64-only binary, so no Gradle task that
 touches resources can run locally. Draft PR: https://github.com/xeriomy/DraftLens/pull/2
 
 Executed commands (CI, `./gradlew`):
-- `./gradlew test` — 258 JVM unit tests, 0 failures, 0 errors, 0 skipped
+- `./gradlew test` — 273 JVM unit tests, 0 failures, 0 errors, 0 skipped (546 executions, both variants)
 - `./gradlew assembleAndroidTest` — instrumentation tests compiled, **not executed**
 - `./gradlew lint` — strict lint, `abortOnError = true`
 - `./gradlew assembleDebug` — debug APK, uploaded as the `draftlens-debug` artifact
 
-Latest green run: https://github.com/xeriomy/DraftLens/actions/runs/43515376361
-(head SHA `e1aca69`).
+Latest green run: https://github.com/xeriomy/DraftLens/actions/runs/43641588245
+(head SHA `25307b8`).
 
 The frame sizing and rendering fix was confirmed by the user on a physical device before the
-Sprint 1A.1 work started and was left unchanged. The 1A.1 interaction changes have **not**
+Sprint 1A.1 work started and was left unchanged. The 1A.1 and 1A.2 interaction changes
+have **not**
 been verified on a device.
 
 Whole-branch review against the plan and spec: eight findings fixed in `691b9d2`, each with a

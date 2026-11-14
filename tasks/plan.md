@@ -33,6 +33,11 @@ calibration profiles. No recognition, no recommendations, no overlays.
       top-right resize handle, the long press opens the menu on its own timeout, the
       fullscreen editor lost its zoom and fit controls, and the canvas no longer lets the
       page scroll during annotation
+- [x] Sprint 1A.2 bug fixes (`25307b8`): paste reads from the clipboard with the target
+      only anchoring the placement, the menu selects the slot it shows and opens on slot
+      creation, a density-aware 48 dp delete control, an early drag cancels the pending
+      long press, one rotation snapshot per captured frame, and validation failures
+      surfaced in the property editor
 
 ### Sprint 1A verification
 CI (GitHub Actions, ubuntu-latest x86_64) is the build of record: `test`,
