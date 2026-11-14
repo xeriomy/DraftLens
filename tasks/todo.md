@@ -36,13 +36,13 @@ authoring host is aarch64 and AGP's `aapt2` is an x86_64-only binary, so no Grad
 touches resources can run locally. Draft PR: https://github.com/xeriomy/DraftLens/pull/2
 
 Executed commands (CI, `./gradlew`):
-- `./gradlew test` — 273 JVM unit tests, 0 failures, 0 errors, 0 skipped (546 executions, both variants)
+- `./gradlew test` — 269 JVM unit tests, 0 failures, 0 errors, 0 skipped (538 executions, both variants)
 - `./gradlew assembleAndroidTest` — instrumentation tests compiled, **not executed**
 - `./gradlew lint` — strict lint, `abortOnError = true`
 - `./gradlew assembleDebug` — debug APK, uploaded as the `draftlens-debug` artifact
 
-Latest green run: https://github.com/xeriomy/DraftLens/actions/runs/43641588245
-(head SHA `25307b8`).
+Latest green run: https://github.com/xeriomy/DraftLens/actions/runs/43643640990
+(head SHA `5ffb0c1`).
 
 The frame sizing and rendering fix was confirmed by the user on a physical device before the
 Sprint 1A.1 work started and was left unchanged. The 1A.1 and 1A.2 interaction changes

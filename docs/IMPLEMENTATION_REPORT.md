@@ -174,11 +174,11 @@ touches resources can run there — verified as
 
 | | |
 |---|---|
-| Run | **43641588245** — <https://github.com/xeriomy/DraftLens/actions/runs/43641588245> |
-| Tested head SHA | `25307b8b8b1e8d2d328b6c5ce25684e0876b59af` |
-| Unit tests | 273 tests · 0 failures · 0 errors · 0 skipped (546 executions, debug + release variants) |
+| Run | **43643640990** — <https://github.com/xeriomy/DraftLens/actions/runs/43643640990> |
+| Tested head SHA | `5ffb0c193cb84da77fb49984c81e219178c7ef3f` |
+| Unit tests | 269 tests · 0 failures · 0 errors · 0 skipped (538 executions, debug + release variants) |
 | Other gates | `assembleAndroidTest`, strict `lint`, `assembleDebug` — all green |
-| APK artifact | `draftlens-debug` · 10 216 362 bytes · digest `sha256:1cc5c7325627877926c6449eb61a0d420c66df1a92c253dd99e392eb3ebc2fad` · APK SHA-256 `913e8b95189229d0ce970c2ad5878cfeef62bc919e4cda5ea3c408cc3e49846b` |
+| APK artifact | `draftlens-debug` · 10 215 534 bytes · digest `sha256:fef08a8b0233e78b30fb18094fd31e90c17557766954fc8fbf3d6a2d20db8a8f` · APK SHA-256 `937541942ff13d54b22d5fae28dbb7343ecb330ccc7e8b0d16f5048dbec758c5` |
 
 ### Run history
 
@@ -215,6 +215,8 @@ touches resources can run there — verified as
 | `43515376361` | `e1aca69` | **success** | final: corrections plus a small cleanup |
 | `43516005404` | `c9a2cef` | **success** | documentation-only pointer before the 1A.2 pass |
 | `43641588245` | `25307b8` | **success** | Sprint 1A.2 bug fixes green |
+| `43642050380` | `f4df20f` | **success** | documentation-only pointer to the 1A.2 run |
+| `43643640990` | `5ffb0c1` | **success** | 1A.2 with the delete control and creation flow reverted to 1A.1 |
 | `42943730823` | `4c42513` | **success** | canvas rendering and workspace fixes green |
 
 Green run tasks: `./gradlew test`, `./gradlew assembleAndroidTest`, `./gradlew lint`
