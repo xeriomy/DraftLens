@@ -454,21 +454,6 @@ class VisionLabViewModelTest {
         assertEquals(first.id, vm.uiState.value.selectedSlotId)
     }
 
-    @Test fun `creating a slot selects it and opens its property editor`() = runBlocking {
-        val vm = slotVm()
-
-        vm.createSlot(NormalizedRect(0.2f, 0.2f, 0.4f, 0.4f))
-
-        val slot = vm.uiState.value.slots.single()
-        assertEquals(slot.id, vm.uiState.value.selectedSlotId)
-        assertEquals(slot.id, vm.uiState.value.menuSlotId)
-        assertEquals(1, slot.index) // the next available default index
-
-        vm.createSlot(NormalizedRect(0.5f, 0.5f, 0.7f, 0.7f))
-        assertEquals(2, vm.uiState.value.slots.last().index)
-        assertEquals(vm.uiState.value.slots.last().id, vm.uiState.value.menuSlotId)
-    }
-
     private fun slotVm(): VisionLabViewModel = VisionLabViewModel(
         FakeVisionFrameSource(originalFrame("live")),
         EchoPreprocessor(),

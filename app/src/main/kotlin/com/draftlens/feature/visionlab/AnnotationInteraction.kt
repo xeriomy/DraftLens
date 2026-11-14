@@ -220,11 +220,6 @@ class AnnotationInteraction(
  */
 object AnnotationTargetResolver {
 
-    /**
-     * The handles are checked before the delete control, so the delete control never
-     * swallows a touch meant for a resize handle where they would otherwise overlap on a
-     * very small rectangle.
-     */
     fun resolve(
         geometry: CanvasGeometry,
         fitted: Rect,
@@ -232,20 +227,22 @@ object AnnotationTargetResolver {
         slots: List<DraftSlot>,
         selectedSlotId: String?,
         handleRadiusPx: Float,
-        deleteRadiusPx: Float,
     ): AnnotationTarget {
         val selected = slots.firstOrNull { it.id == selectedSlotId }
         if (selected != null) {
+            val delete = geometry.deleteControlCenter(selected.rect, fitted)
+            if ((offset - delete).getDistance() <= DELETE_CONTROL_RADIUS_PX * 1.5f) {
+                return AnnotationTarget.Delete(selected.id)
+            }
             geometry.handleAt(selected.rect, offset, fitted, handleRadiusPx)?.let { corner ->
                 return AnnotationTarget.Handle(selected.id, corner, selected.rect)
-            }
-            val delete = geometry.deleteControlCenter(selected.rect, fitted)
-            if ((offset - delete).getDistance() <= deleteRadiusPx) {
-                return AnnotationTarget.Delete(selected.id)
             }
         }
         val point = geometry.canvasToNormalized(offset, fitted) ?: return AnnotationTarget.Outside
         AnnotationHitTest.slotAt(point, slots)?.let { return AnnotationTarget.Slot(it.id, it.rect) }
         return AnnotationTarget.Empty
     }
+
+    /** Visual radius of the delete control, in canvas pixels. */
+    const val DELETE_CONTROL_RADIUS_PX = 14f
 }

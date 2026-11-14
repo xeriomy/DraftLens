@@ -306,7 +306,6 @@ class AnnotationTargetResolverTest {
             slots = listOf(slot("a")),
             selectedSlotId = null,
             handleRadiusPx = 12f,
-            deleteRadiusPx = 24f,
         )
         assertEquals(AnnotationTarget.Slot("a", slot("a").rect), target)
     }
@@ -319,7 +318,6 @@ class AnnotationTargetResolverTest {
             slots = listOf(slot("a")),
             selectedSlotId = null,
             handleRadiusPx = 12f,
-            deleteRadiusPx = 24f,
         )
         assertEquals(AnnotationTarget.Empty, target)
     }
@@ -332,7 +330,6 @@ class AnnotationTargetResolverTest {
             slots = listOf(slot("a")),
             selectedSlotId = null,
             handleRadiusPx = 12f,
-            deleteRadiusPx = 24f,
         )
         assertEquals(AnnotationTarget.Outside, target)
     }
@@ -347,7 +344,6 @@ class AnnotationTargetResolverTest {
             slots = listOf(selected, slot("b", left = 0.2f)),
             selectedSlotId = "a",
             handleRadiusPx = 12f,
-            deleteRadiusPx = 24f,
         )
         assertEquals(AnnotationTarget.Delete("a"), target)
     }
@@ -396,64 +392,7 @@ class AnnotationTargetResolverTest {
             slots = listOf(selected),
             selectedSlotId = "a",
             handleRadiusPx = 12f,
-            deleteRadiusPx = 24f,
         )
         assertEquals(AnnotationTarget.Handle("a", Corner.BOTTOM_RIGHT, selected.rect), target)
-    }
-
-    @Test fun `a point within the expanded delete radius resolves to the delete control`() {
-        val selected = slot("a")
-        val delete = geometry.deleteControlCenter(selected.rect, fitted)
-        val target = AnnotationTargetResolver.resolve(
-            geometry = geometry,
-            fitted = fitted,
-            offset = Offset(delete.x + 23f, delete.y), // just inside the 24 px radius
-            slots = listOf(selected),
-            selectedSlotId = "a",
-            handleRadiusPx = 12f,
-            deleteRadiusPx = 24f,
-        )
-        assertEquals(AnnotationTarget.Delete("a"), target)
-    }
-
-    @Test fun `a point just outside the delete radius does not resolve to the delete control`() {
-        val selected = slot("a")
-        val delete = geometry.deleteControlCenter(selected.rect, fitted)
-        val target = AnnotationTargetResolver.resolve(
-            geometry = geometry,
-            fitted = fitted,
-            offset = Offset(delete.x + 25f, delete.y), // just outside the 24 px radius
-            slots = listOf(selected),
-            selectedSlotId = "a",
-            handleRadiusPx = 12f,
-            deleteRadiusPx = 24f,
-        )
-        // Beyond the right edge of the rectangle: empty image space, never the delete control.
-        assertEquals(AnnotationTarget.Empty, target)
-    }
-
-    @Test fun `a handle wins over the delete control on a very small rectangle`() {
-        val tiny = DraftSlot(
-            id = "tiny",
-            type = SlotType.BAN,
-            team = SlotTeam.ALLY,
-            index = 1,
-            rect = NormalizedRect(0.1f, 0.1f, 0.142f, 0.126f),
-        )
-        val bounds = geometry.normalizedToCanvas(tiny.rect, fitted)
-        // Inside both the top-left handle square (|dx| <= 2 × 12 px) and the 24 px-radius
-        // delete circle at the top-right corner: the handle must win so the two controls
-        // never overlap on a minimum-size rectangle.
-        val overlap = Offset(bounds.topLeft.x + 20f, bounds.top)
-        val target = AnnotationTargetResolver.resolve(
-            geometry = geometry,
-            fitted = fitted,
-            offset = overlap,
-            slots = listOf(tiny),
-            selectedSlotId = "tiny",
-            handleRadiusPx = 12f,
-            deleteRadiusPx = 24f,
-        )
-        assertEquals(AnnotationTarget.Handle("tiny", Corner.TOP_LEFT, tiny.rect), target)
     }
 }

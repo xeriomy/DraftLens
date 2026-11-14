@@ -56,8 +56,7 @@ label, plus **Copy**, **Paste** and **Duplicate**. It positions itself inside th
 it is never clipped off-screen in either orientation, and it no longer occupies a permanent
 part of the canvas. The old bottom property controls and the "Add slot" card with its
 hardcoded rectangle are gone; creating a slot is now a long press and a drag on the image.
-Opening the menu selects the slot first, so the menu and the selection always agree. Creating
-a drawn slot selects it and opens its editor immediately. A type, team or index change that
+Opening the menu selects the slot first, so the menu and the selection always agree. A type, team or index change that
 would produce a duplicate logical identity is refused with the reason shown next to the
 controls, the slot keeps its previous values and the editor stays open; invalid index text is
 flagged inline.
@@ -72,10 +71,7 @@ source and the target are never modified or deleted.
 ### Deletion and undo
 
 The selected slot shows an X control at its top-right corner, drawn in red and distinct from
-the resize handles. The touch target is 48 dp in diameter, derived from the screen density,
-the hit test uses the same density-aware geometry as the drawing, and the control is drawn
-outside the canvas clip region so it stays fully visible against a canvas edge. Deleting
-uses the slot's stable id. **Undo** covers a deletion, a
+the resize handles. Deleting uses the slot's stable id. **Undo** covers a deletion, a
 creation and a move or resize; a deletion is undone by restoring the slot with its own id.
 
 ### The slot list
@@ -132,7 +128,7 @@ Four corrections were applied on top of the interaction rework.
 
 ### Sprint 1A.2 — bug-fix pass
 
-Seven focused fixes on top of 1A.1, each with regression tests:
+Six focused fixes on top of 1A.1, each with regression tests:
 
 1. **Paste reads from the clipboard.** `pasteSlot()` used to read the target slot as the
    source, so pasting from another slot's menu duplicated that slot instead of the copied
@@ -142,28 +138,28 @@ Seven focused fixes on top of 1A.1, each with regression tests:
    The copied source and the target are never modified.
 2. **The menu and the selection are the same slot.** `openSlotMenu()` validates the id,
    selects that exact slot and only then opens the menu, so the outline, the handles, the
-   delete control, the list highlight and the menu always refer to one slot. Creating a
-   drawn slot selects it and opens its property editor immediately.
-3. **The delete control is density-aware.** The X stays exactly at the top-right corner
-   where the top-right resize handle used to be. The touch target is 48 dp in diameter, the
-   hit test uses the same density-aware geometry as the drawing, and the control is drawn
-   outside the canvas clip region so it is not cut off at the canvas edges. On a
-   minimum-size rectangle the remaining handles win the overlap with the delete control.
-4. **An early drag cancels the pending long press.** Moving past the touch slop before the
+   delete control, the list highlight and the menu always refer to one slot.
+3. **An early drag cancels the pending long press.** Moving past the touch slop before the
    timeout now cancels it: a drag on an unselected slot only selects it, a drag on a
    selected slot moves it, and a drag on empty space never turns into slot creation. Once
    the timeout fires, the deadline is abandoned, so later movement can neither delay nor
    re-open the menu. The 450 ms threshold is unchanged.
-5. **One rotation snapshot per captured frame.** `FramePipeline.displayRotation` stays
+4. **One rotation snapshot per captured frame.** `FramePipeline.displayRotation` stays
    `@Volatile`, and the ImageReader thread reads it once per frame; the same local value is
    stamped on the frame and used for the orientation correction, so the two can never
    disagree. The MediaProjection pixel-orientation behaviour is unchanged.
-6. **Validation failures are visible.** A type, team or index change refused because of a
+5. **Validation failures are visible.** A type, team or index change refused because of a
    duplicate logical identity now shows the reason next to the controls, keeps the slot's
    previous values and keeps the editor open. Invalid index text is flagged inline in the
    index field.
-7. **This report.** The fullscreen section no longer describes the removed pinch-to-zoom,
+6. **This report.** The fullscreen section no longer describes the removed pinch-to-zoom,
    pan, *Fit to screen* and *Reset zoom* controls.
+
+Note: an earlier revision of this pass reworked the delete control (a density-aware 48 dp
+touch target drawn outside the canvas clip region) and made slot creation open the property
+editor automatically. Both were reverted at the maintainer's request and are **not** part of
+the current build; the delete control and the creation flow behave exactly as they did in
+1A.1.
 
 ---
 
@@ -295,9 +291,9 @@ slot coordinates for matching screen layouts. The "Detection: not implemented" n
 - **Sprint 1A: NOT RUN.** The Vision Lab, the annotation canvas, overlay alignment on a real
   screen and the calibration flow were not exercised on hardware.
 - **Sprint 1A.1 / 1A.2 interaction changes: NOT RUN.** The interaction redesign and the
-  bug-fix pass were not verified on a physical device; the delete control's 48 dp target,
-  the long-press cancellation and the property editor's error feedback remain unconfirmed
-  on hardware.
+  bug-fix pass were not verified on a physical device; the paste fix, the menu/selection
+  sync, the long-press cancellation and the property editor's error feedback remain
+  unconfirmed on hardware.
 - **Sprint 0: PARTIAL, maintainer-reported.** Capture and live preview were reported working
   on a physical device; device model, Android version, frame counts and measurements were not
   supplied, so full PASS is not claimed.

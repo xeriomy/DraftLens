@@ -158,16 +158,9 @@ class VisionLabViewModel(
         return result
     }
 
-    /**
-     * Creates a slot drawn on the canvas: the next default index, the new slot becomes the
-     * selection, and its property editor opens immediately so the user can set type, team,
-     * index and label without a second long press.
-     */
-    fun createSlot(rect: NormalizedRect): Result<DraftSlot> {
-        val result = addSlot(SlotType.BAN, SlotTeam.ALLY, rect)
-        result.onSuccess { openSlotMenu(it.id) }
-        return result
-    }
+    /** Creates a slot drawn on the canvas and selects it. */
+    fun createSlot(rect: NormalizedRect): Result<DraftSlot> =
+        addSlot(SlotType.BAN, SlotTeam.ALLY, rect)
 
     fun moveSlot(id: String, deltaX: Float, deltaY: Float): Result<DraftSlot> =
         annotationStore.move(id, deltaX, deltaY).also { refreshSlots() }

@@ -67,12 +67,7 @@ top-left, bottom-left and bottom-right.
 The **top-right corner carries exactly one control: the X that deletes the slot.** It sits
 on the corner where the top-right resize handle used to be — there is no handle behind or
 beside it, and nothing floats above the rectangle. The X is drawn in red, so it can never be
-mistaken for a handle. Its touch target is 48 dp in diameter, derived from the screen
-density, and the hit test uses the same density-aware geometry as the drawing, so "what you
-tap is what you see" holds on high-density phones. The control is drawn outside the canvas
-clip region, so it stays fully visible when the selected rectangle touches a canvas edge.
-On a minimum-size rectangle the top-left handle wins the overlap with the delete control, so
-the two never both claim the same touch.
+mistaken for a handle, and its touch target is larger than the drawn circle.
 
 The missing top-right handle does not limit resizing: the top-left handle changes the width
 *and* the height, the bottom-right handle does the same from the other side, and the
@@ -99,8 +94,7 @@ either orientation.
 
 The menu and the selection always refer to the same slot: opening the menu selects that
 slot first, so the outline, the handles, the delete control and the list highlight all
-agree. Creating a slot selects it and opens its editor immediately, ready for type, team,
-index and label.
+agree.
 
 Validation failures are never silent. A type, team or index change that would produce a
 duplicate logical identity is refused with the reason shown next to the controls, the slot

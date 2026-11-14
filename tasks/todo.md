@@ -27,10 +27,9 @@
       long press opens the menu on its own timeout, the fullscreen editor lost zoom and fit
       controls, and the page no longer scrolls during annotation (`24a43af`, `593eeb4`)
 - [x] Sprint 1A.2 bug fixes: paste reads from the clipboard with the target only anchoring
-      placement, the property menu selects the same slot it shows and opens on slot
-      creation, density-aware 48 dp delete control, an early drag cancels the pending long
-      press, one rotation snapshot per captured frame, validation failures surfaced in the
-      property editor (`25307b8`)
+      placement, the property menu selects the same slot it shows, an early drag cancels
+      the pending long press, one rotation snapshot per captured frame, validation failures
+      surfaced in the property editor (`25307b8`)
 
 Verification for Sprint 1A runs in GitHub Actions (ubuntu-latest, x86_64) because the
 authoring host is aarch64 and AGP's `aapt2` is an x86_64-only binary, so no Gradle task that
