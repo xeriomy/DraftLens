@@ -1,6 +1,7 @@
 package com.draftlens.feature.visionlab
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -8,19 +9,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
@@ -48,12 +51,16 @@ import kotlin.time.TimeSource
 
 /**
  * The actions the contextual property editor can perform on a slot.
+ *
+ * The update actions return the store's [Result]: a failure (for example a duplicate logical
+ * identity) is surfaced by the editor instead of being swallowed, and the slot keeps its
+ * previous values.
  */
 data class SlotMenuActions(
-    val onTypeChange: (String, SlotType) -> Unit,
-    val onTeamChange: (String, SlotTeam) -> Unit,
-    val onIndexChange: (String, Int) -> Unit,
-    val onLabelChange: (String, String?) -> Unit,
+    val onTypeChange: (String, SlotType) -> Result<DraftSlot>,
+    val onTeamChange: (String, SlotTeam) -> Result<DraftSlot>,
+    val onIndexChange: (String, Int) -> Result<DraftSlot>,
+    val onLabelChange: (String, String?) -> Result<DraftSlot>,
     val onCopy: (String) -> Unit,
     val onPaste: (String) -> Unit,
     val onDuplicate: (String) -> Unit,
@@ -116,6 +123,7 @@ fun AnnotationCanvas(
         )
     }
     val handleRadius = with(LocalDensity.current) { HANDLE_RADIUS.toPx() }
+    val deleteRadiusPx = with(LocalDensity.current) { DELETE_TOUCH_TARGET.toPx() / 2f }
     val textMeasurer = rememberTextMeasurer()
     val interaction = remember { AnnotationInteraction() }
 
@@ -133,7 +141,7 @@ fun AnnotationCanvas(
                     .fillMaxWidth()
                     .height(workspaceHeight)
                     .onSizeChanged { canvasSize = it }
-                    .pointerInput(geometry, fitted, handleRadius) {
+                    .pointerInput(geometry, fitted, handleRadius, deleteRadiusPx) {
                         annotationPointerInput(
                             interaction = interaction,
                             geometry = { geometry },
@@ -141,6 +149,7 @@ fun AnnotationCanvas(
                             slots = { currentSlots },
                             selected = { currentSelected },
                             handleRadius = handleRadius,
+                            deleteRadiusPx = deleteRadiusPx,
                             onAction = { action ->
                                 when (action) {
                                     is AnnotationAction.Select -> onSelect(action.slotId)
@@ -209,7 +218,6 @@ fun AnnotationCanvas(
                         ).forEach { corner ->
                             drawCircle(color = SlotVisuals.SELECTED, radius = handleRadius, center = corner)
                         }
-                        drawDeleteControl(geo, slot, fitted)
                     }
 
                     pending?.let { rect ->
@@ -238,6 +246,33 @@ fun AnnotationCanvas(
                     SlotContextMenu(slot = menuSlot, actions = menuActions)
                 }
             }
+
+            // The delete control is drawn as an overlay, not inside the Canvas, so it is not
+            // clipped when the selected rectangle sits against a canvas edge. Its touch target
+            // is 48 dp and matches the hit test exactly.
+            val deleteSlot = currentSlots.firstOrNull { it.id == currentSelected }
+            if (geometry != null && deleteSlot != null) {
+                val bounds = geometry.normalizedToCanvas(deleteSlot.rect, fitted)
+                Box(
+                    modifier = Modifier
+                        .offset {
+                            IntOffset(
+                                (bounds.right - deleteRadiusPx).toInt(),
+                                (bounds.top - deleteRadiusPx).toInt(),
+                            )
+                        }
+                        .size(DELETE_TOUCH_TARGET)
+                        .background(Color(0xFFD32F2F), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = CloseIconVector,
+                        contentDescription = "Delete slot ${deleteSlot.id.take(8)}",
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -245,29 +280,8 @@ fun AnnotationCanvas(
 /** The radius of the resize handles, in canvas pixels. */
 private val HANDLE_RADIUS = 6.dp
 
-/** The X control that deletes the selected slot; it sits on the top-right corner. */
-private fun DrawScope.drawDeleteControl(
-    geometry: CanvasGeometry,
-    slot: DraftSlot,
-    fitted: Rect,
-) {
-    val radius = AnnotationTargetResolver.DELETE_CONTROL_RADIUS_PX
-    val center = geometry.deleteControlCenter(slot.rect, fitted)
-    drawCircle(color = Color(0xFFD32F2F), radius = radius, center = center)
-    val arm = radius * 0.5f
-    drawLine(
-        color = Color.White,
-        start = Offset(center.x - arm, center.y - arm),
-        end = Offset(center.x + arm, center.y + arm),
-        strokeWidth = 2.dp.toPx(),
-    )
-    drawLine(
-        color = Color.White,
-        start = Offset(center.x + arm, center.y - arm),
-        end = Offset(center.x - arm, center.y + arm),
-        strokeWidth = 2.dp.toPx(),
-    )
-}
+/** Diameter of the delete control's touch target: 48 dp, the minimum comfortable touch size. */
+private val DELETE_TOUCH_TARGET = 48.dp
 
 /**
  * The single pointer handler of the annotation canvas.
@@ -285,6 +299,7 @@ private suspend fun PointerInputScope.annotationPointerInput(
     slots: () -> List<DraftSlot>,
     selected: () -> String?,
     handleRadius: Float,
+    deleteRadiusPx: Float,
     onAction: (AnnotationAction) -> Unit,
     onMove: (String, Float, Float) -> Unit,
     onResize: (String, NormalizedRect) -> Unit,
@@ -307,6 +322,7 @@ private suspend fun PointerInputScope.annotationPointerInput(
                 slots = slots(),
                 selectedSlotId = selected(),
                 handleRadiusPx = handleRadius,
+                deleteRadiusPx = deleteRadiusPx,
             )
             val downResult = interaction.down(target, selected())
             var state = downResult.state
@@ -322,7 +338,6 @@ private suspend fun PointerInputScope.annotationPointerInput(
             down.consume()
 
             state.slotId?.let { onGestureStart(it) }
-            var longPressFired = false
             var slopExceeded = false
             var lastNormalized = geo.canvasToNormalizedClamped(startScreen, imageRect)
             var drawnRect: NormalizedRect? = null
@@ -331,15 +346,15 @@ private suspend fun PointerInputScope.annotationPointerInput(
 
             while (true) {
                 // The long press fires on its own timeout, without waiting for a movement.
+                // Once the pointer moved past the slop (or the timeout already fired), no
+                // deadline is kept, so movement can neither cancel nor reopen the menu.
                 val elapsed = startedAt.elapsedNow().inWholeMilliseconds
-                val remaining = interaction.longPressTimeoutMs - elapsed
-                val event = if (!longPressFired && remaining > 0L) {
-                    withTimeoutOrNull(remaining) { awaitPointerEvent() }
+                val event = if (AnnotationInteraction.shouldAwaitLongPress(state, interaction.longPressTimeoutMs, elapsed)) {
+                    withTimeoutOrNull(interaction.longPressTimeoutMs - elapsed) { awaitPointerEvent() }
                 } else {
                     awaitPointerEvent()
                 }
                 if (event == null) {
-                    longPressFired = true
                     val result = interaction.longPress(state)
                     state = result.state
                     if (result.action != AnnotationAction.None) onAction(result.action)

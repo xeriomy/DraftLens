@@ -10,6 +10,7 @@ import com.draftlens.vision.geometry.NormalizedRect
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AnnotationInteractionTest {
@@ -170,6 +171,105 @@ class AnnotationInteractionTest {
         )
         assertEquals(rect, down.state.startRect)
     }
+
+    // region the long-press deadline
+
+    @Test fun `moving an unselected slot before the timeout selects it and never opens the menu`() {
+        val down = interaction.down(AnnotationTarget.Slot("a", rect), selectedSlotId = "b")
+        val moved = interaction.drag(down.state, distancePx = 40f)
+
+        assertEquals(AnnotationAction.Select("a"), moved.action)
+        assertTrue("the pending long press must be cancelled", moved.state.longPressCancelled)
+        assertFalse(AnnotationInteraction.shouldAwaitLongPress(moved.state, timeoutMs = 400L, elapsedMs = 100L))
+        // Even after the timeout would have elapsed, the menu never opens.
+        val longPress = interaction.longPress(moved.state)
+        assertEquals(AnnotationAction.None, longPress.action)
+        assertEquals(AnnotationInteraction.Phase.Pressed, longPress.state.phase)
+    }
+
+    @Test fun `moving a selected slot before the timeout starts moving it and never opens the menu`() {
+        val down = interaction.down(AnnotationTarget.Slot("a", rect), selectedSlotId = "a")
+        val moved = interaction.drag(down.state, distancePx = 40f)
+
+        assertEquals(AnnotationInteraction.Phase.Moving, moved.state.phase)
+        assertTrue(moved.state.longPressCancelled)
+        assertFalse(AnnotationInteraction.shouldAwaitLongPress(moved.state, 400L, 100L))
+        assertEquals(AnnotationAction.None, interaction.longPress(moved.state).action)
+    }
+
+    @Test fun `moving on empty space before the timeout never turns into drawing or creating`() {
+        val down = interaction.down(AnnotationTarget.Empty, selectedSlotId = null)
+        val moved = interaction.drag(down.state, distancePx = 40f)
+
+        assertTrue(moved.state.longPressCancelled)
+        assertFalse(AnnotationInteraction.shouldAwaitLongPress(moved.state, 400L, 100L))
+        val afterTimeout = interaction.longPress(moved.state)
+        assertEquals(AnnotationAction.None, afterTimeout.action)
+        assertEquals(AnnotationInteraction.Phase.Pressed, afterTimeout.state.phase)
+        // Releasing here creates nothing, even with a drawn rectangle offered.
+        assertEquals(
+            AnnotationAction.None,
+            interaction.up(
+                moved.state,
+                NormalizedRect(0.1f, 0.1f, 0.3f, 0.3f),
+            ).action,
+        )
+    }
+
+    @Test fun `the long press timeout stays armed while the pointer is within the slop`() {
+        val down = interaction.down(AnnotationTarget.Slot("a", rect), selectedSlotId = "a")
+
+        assertTrue(AnnotationInteraction.shouldAwaitLongPress(down.state, 400L, 0L))
+        assertTrue(AnnotationInteraction.shouldAwaitLongPress(down.state, 400L, 399L))
+        assertFalse(AnnotationInteraction.shouldAwaitLongPress(down.state, 400L, 400L))
+    }
+
+    @Test fun `movement below the slop before the timeout leaves the long press armed`() {
+        val down = interaction.down(AnnotationTarget.Slot("a", rect), selectedSlotId = "a")
+        val moved = interaction.drag(down.state, distancePx = 3f)
+
+        assertFalse(moved.state.longPressCancelled)
+        assertTrue(AnnotationInteraction.shouldAwaitLongPress(moved.state, 400L, 399L))
+    }
+
+    @Test fun `after the timeout fires the deadline is gone and movement cannot delay or cancel the menu`() {
+        val down = interaction.down(AnnotationTarget.Slot("a", rect), selectedSlotId = "a")
+        val fired = interaction.longPress(down.state).state
+
+        assertFalse(AnnotationInteraction.shouldAwaitLongPress(fired, 400L, 401L))
+        val nudged = interaction.drag(fired, distancePx = 3f)
+        assertEquals(AnnotationInteraction.Phase.Menu, nudged.state.phase)
+        assertEquals(AnnotationAction.None, nudged.action)
+        val dragged = interaction.drag(fired, distancePx = 80f)
+        assertEquals(AnnotationInteraction.Phase.Menu, dragged.state.phase)
+        assertEquals(AnnotationAction.None, dragged.action)
+    }
+
+    @Test fun `after the timeout on empty space a drag draws a rectangle but the deadline is gone`() {
+        val down = interaction.down(AnnotationTarget.Empty, selectedSlotId = null)
+        val drawing = interaction.longPress(down.state).state
+
+        assertFalse(AnnotationInteraction.shouldAwaitLongPress(drawing, 400L, 401L))
+        assertEquals(AnnotationInteraction.Phase.Drawing, interaction.drag(drawing, distancePx = 50f).state.phase)
+    }
+
+    @Test fun `creating a slot requires holding first reaching the threshold then dragging`() {
+        // A drag past the slop before the timeout can never create a rectangle.
+        val down = interaction.down(AnnotationTarget.Empty, selectedSlotId = null)
+        val moved = interaction.drag(down.state, distancePx = 40f).state
+        val rectangle = NormalizedRect(0.1f, 0.1f, 0.3f, 0.3f)
+
+        assertEquals(AnnotationAction.None, interaction.longPress(moved).action)
+        assertEquals(AnnotationAction.None, interaction.up(moved, rectangle).action)
+
+        // Holding still, reaching the threshold, then dragging draws the rectangle.
+        val held = interaction.down(AnnotationTarget.Empty, selectedSlotId = null)
+        val armed = interaction.longPress(held.state)
+        assertEquals(AnnotationInteraction.Phase.Drawing, armed.state.phase)
+        assertEquals(AnnotationAction.Draw(rectangle), interaction.up(armed.state, rectangle).action)
+    }
+
+    // endregion
 }
 
 class AnnotationTargetResolverTest {
@@ -206,6 +306,7 @@ class AnnotationTargetResolverTest {
             slots = listOf(slot("a")),
             selectedSlotId = null,
             handleRadiusPx = 12f,
+            deleteRadiusPx = 24f,
         )
         assertEquals(AnnotationTarget.Slot("a", slot("a").rect), target)
     }
@@ -218,6 +319,7 @@ class AnnotationTargetResolverTest {
             slots = listOf(slot("a")),
             selectedSlotId = null,
             handleRadiusPx = 12f,
+            deleteRadiusPx = 24f,
         )
         assertEquals(AnnotationTarget.Empty, target)
     }
@@ -230,6 +332,7 @@ class AnnotationTargetResolverTest {
             slots = listOf(slot("a")),
             selectedSlotId = null,
             handleRadiusPx = 12f,
+            deleteRadiusPx = 24f,
         )
         assertEquals(AnnotationTarget.Outside, target)
     }
@@ -244,6 +347,7 @@ class AnnotationTargetResolverTest {
             slots = listOf(selected, slot("b", left = 0.2f)),
             selectedSlotId = "a",
             handleRadiusPx = 12f,
+            deleteRadiusPx = 24f,
         )
         assertEquals(AnnotationTarget.Delete("a"), target)
     }
@@ -292,7 +396,64 @@ class AnnotationTargetResolverTest {
             slots = listOf(selected),
             selectedSlotId = "a",
             handleRadiusPx = 12f,
+            deleteRadiusPx = 24f,
         )
         assertEquals(AnnotationTarget.Handle("a", Corner.BOTTOM_RIGHT, selected.rect), target)
+    }
+
+    @Test fun `a point within the expanded delete radius resolves to the delete control`() {
+        val selected = slot("a")
+        val delete = geometry.deleteControlCenter(selected.rect, fitted)
+        val target = AnnotationTargetResolver.resolve(
+            geometry = geometry,
+            fitted = fitted,
+            offset = Offset(delete.x + 23f, delete.y), // just inside the 24 px radius
+            slots = listOf(selected),
+            selectedSlotId = "a",
+            handleRadiusPx = 12f,
+            deleteRadiusPx = 24f,
+        )
+        assertEquals(AnnotationTarget.Delete("a"), target)
+    }
+
+    @Test fun `a point just outside the delete radius does not resolve to the delete control`() {
+        val selected = slot("a")
+        val delete = geometry.deleteControlCenter(selected.rect, fitted)
+        val target = AnnotationTargetResolver.resolve(
+            geometry = geometry,
+            fitted = fitted,
+            offset = Offset(delete.x + 25f, delete.y), // just outside the 24 px radius
+            slots = listOf(selected),
+            selectedSlotId = "a",
+            handleRadiusPx = 12f,
+            deleteRadiusPx = 24f,
+        )
+        // Beyond the right edge of the rectangle: empty image space, never the delete control.
+        assertEquals(AnnotationTarget.Empty, target)
+    }
+
+    @Test fun `a handle wins over the delete control on a very small rectangle`() {
+        val tiny = DraftSlot(
+            id = "tiny",
+            type = SlotType.BAN,
+            team = SlotTeam.ALLY,
+            index = 1,
+            rect = NormalizedRect(0.1f, 0.1f, 0.142f, 0.126f),
+        )
+        val bounds = geometry.normalizedToCanvas(tiny.rect, fitted)
+        // Inside both the top-left handle square (|dx| <= 2 × 12 px) and the 24 px-radius
+        // delete circle at the top-right corner: the handle must win so the two controls
+        // never overlap on a minimum-size rectangle.
+        val overlap = Offset(bounds.topLeft.x + 20f, bounds.top)
+        val target = AnnotationTargetResolver.resolve(
+            geometry = geometry,
+            fitted = fitted,
+            offset = overlap,
+            slots = listOf(tiny),
+            selectedSlotId = "tiny",
+            handleRadiusPx = 12f,
+            deleteRadiusPx = 24f,
+        )
+        assertEquals(AnnotationTarget.Handle("tiny", Corner.TOP_LEFT, tiny.rect), target)
     }
 }

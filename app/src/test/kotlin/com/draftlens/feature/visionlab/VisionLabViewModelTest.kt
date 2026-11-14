@@ -395,6 +395,80 @@ class VisionLabViewModelTest {
         assertEquals(slot.rect, vm.uiState.value.slots.single().rect)
     }
 
+    @Test fun `paste uses the copied slot as the source and the target only anchors placement`() = runBlocking {
+        val vm = slotVm()
+        vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.1f, 0.1f, 0.3f, 0.2f), index = 1, label = "slot-a")
+        vm.addSlot(SlotType.PICK, SlotTeam.ENEMY, NormalizedRect(0.6f, 0.6f, 0.9f, 0.9f), index = 1, label = "slot-b")
+        val a = vm.uiState.value.slots.first { it.label == "slot-a" }
+        val b = vm.uiState.value.slots.first { it.label == "slot-b" }
+
+        vm.copySlot(a.id)
+        vm.selectSlot(b.id)
+        val pasted = vm.pasteSlot(b.id)
+
+        assertTrue(pasted.isSuccess)
+        val newSlot = pasted.getOrThrow()
+        assertNotEquals(a.id, newSlot.id)
+        assertNotEquals(b.id, newSlot.id)
+        assertEquals(a.type, newSlot.type)
+        assertEquals(a.team, newSlot.team)
+        assertEquals(a.label, newSlot.label)
+        assertEquals(a.rect.width, newSlot.rect.width, 0.0001f)
+        assertEquals(a.rect.height, newSlot.rect.height, 0.0001f)
+        assertEquals(SlotPlacement.PASTE_OFFSET, newSlot.rect.left - b.rect.left, 0.0001f)
+        assertEquals(SlotPlacement.PASTE_OFFSET, newSlot.rect.top - b.rect.top, 0.0001f)
+        assertEquals(2, newSlot.index) // next free index in the copied slot's (BAN, ALLY) scope
+        // Neither the source nor the target is modified or deleted.
+        assertEquals(a, vm.uiState.value.slots.first { it.id == a.id })
+        assertEquals(b, vm.uiState.value.slots.first { it.id == b.id })
+    }
+
+    @Test fun `paste without a target offsets from the copied slot`() = runBlocking {
+        val vm = slotVm()
+        vm.addSlot(SlotType.PICK, SlotTeam.ENEMY, NormalizedRect(0.5f, 0.4f, 0.7f, 0.6f), label = "slot-a")
+        val a = vm.uiState.value.slots.single()
+
+        vm.copySlot(a.id)
+        val pasted = vm.pasteSlot()
+
+        assertTrue(pasted.isSuccess)
+        val newSlot = pasted.getOrThrow()
+        assertEquals(SlotPlacement.PASTE_OFFSET, newSlot.rect.left - a.rect.left, 0.0001f)
+        assertEquals(SlotPlacement.PASTE_OFFSET, newSlot.rect.top - a.rect.top, 0.0001f)
+        assertEquals(a.rect.width, newSlot.rect.width, 0.0001f)
+        assertEquals(a.rect.height, newSlot.rect.height, 0.0001f)
+        assertEquals(a.type, newSlot.type)
+        assertEquals(a.team, newSlot.team)
+    }
+
+    @Test fun `opening the menu on an unselected slot selects it`() = runBlocking {
+        val vm = slotVm()
+        vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.1f, 0.1f, 0.2f, 0.2f), label = "first")
+        vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.4f, 0.4f, 0.5f, 0.5f), label = "second")
+        val first = vm.uiState.value.slots.first { it.label == "first" }
+        assertNotEquals(first.id, vm.uiState.value.selectedSlotId) // the newest slot was selected
+
+        vm.openSlotMenu(first.id)
+
+        assertEquals(first.id, vm.uiState.value.menuSlotId)
+        assertEquals(first.id, vm.uiState.value.selectedSlotId)
+    }
+
+    @Test fun `creating a slot selects it and opens its property editor`() = runBlocking {
+        val vm = slotVm()
+
+        vm.createSlot(NormalizedRect(0.2f, 0.2f, 0.4f, 0.4f))
+
+        val slot = vm.uiState.value.slots.single()
+        assertEquals(slot.id, vm.uiState.value.selectedSlotId)
+        assertEquals(slot.id, vm.uiState.value.menuSlotId)
+        assertEquals(1, slot.index) // the next available default index
+
+        vm.createSlot(NormalizedRect(0.5f, 0.5f, 0.7f, 0.7f))
+        assertEquals(2, vm.uiState.value.slots.last().index)
+        assertEquals(vm.uiState.value.slots.last().id, vm.uiState.value.menuSlotId)
+    }
+
     private fun slotVm(): VisionLabViewModel = VisionLabViewModel(
         FakeVisionFrameSource(originalFrame("live")),
         EchoPreprocessor(),

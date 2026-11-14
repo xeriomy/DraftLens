@@ -50,6 +50,10 @@ Rules that follow from it:
   there, so a drag can never move the wrong slot.
 - A stationary long press is never read as a move, and it opens the property editor
   immediately when the timeout is reached.
+- Moving past the touch slop **before** the timeout cancels the pending long press: a drag
+  on an unselected rectangle only selects it, a drag on a selected rectangle moves it, and a
+  drag on empty space never turns into slot creation. Once the threshold is reached,
+  movement can neither delay nor cancel the already-open menu.
 - A drag on empty space never creates a rectangle: creating requires the long press first.
 - A rectangle is never created outside the displayed image.
 - The canvas takes the gesture from the first touch, so **the page never scrolls while a
@@ -63,7 +67,12 @@ top-left, bottom-left and bottom-right.
 The **top-right corner carries exactly one control: the X that deletes the slot.** It sits
 on the corner where the top-right resize handle used to be — there is no handle behind or
 beside it, and nothing floats above the rectangle. The X is drawn in red, so it can never be
-mistaken for a handle, and its touch target is larger than the drawn circle.
+mistaken for a handle. Its touch target is 48 dp in diameter, derived from the screen
+density, and the hit test uses the same density-aware geometry as the drawing, so "what you
+tap is what you see" holds on high-density phones. The control is drawn outside the canvas
+clip region, so it stays fully visible when the selected rectangle touches a canvas edge.
+On a minimum-size rectangle the top-left handle wins the overlap with the delete control, so
+the two never both claim the same touch.
 
 The missing top-right handle does not limit resizing: the top-left handle changes the width
 *and* the height, the bottom-right handle does the same from the other side, and the
@@ -88,6 +97,16 @@ movement afterwards does not delay it either. It never occupies a permanent part
 canvas, and it positions itself inside the window, so it is never clipped off-screen in
 either orientation.
 
+The menu and the selection always refer to the same slot: opening the menu selects that
+slot first, so the outline, the handles, the delete control and the list highlight all
+agree. Creating a slot selects it and opens its editor immediately, ready for type, team,
+index and label.
+
+Validation failures are never silent. A type, team or index change that would produce a
+duplicate logical identity is refused with the reason shown next to the controls, the slot
+keeps its previous values, and the editor stays open. Invalid index text is flagged inline
+in the index field.
+
 It edits:
 
 - Slot type: `BAN` / `PICK`.
@@ -99,10 +118,13 @@ And it offers three actions:
 
 - **Copy** — puts the slot into the application's own clipboard. This is deliberately *not*
   the Android system clipboard: a slot is calibration data that belongs to this app.
-- **Paste** — creates a copy of the clipboard slot next to the current slot. The copy gets a
-  **new unique id**, is offset a little from its source, stays inside the image and takes
-  the next free index in its `(type, team)` scope so it never collides with an existing
-  logical slot. The index can be changed afterwards.
+- **Paste** — creates a copy of the **clipboard** slot next to the slot the menu was opened
+  on (or next to the copied slot itself when Paste is invoked without a target). The
+  clipboard slot is always the source: type, team, label and rectangle dimensions are copied
+  from it. The target slot only anchors the placement. The copy gets a **new unique id**, is
+  offset a little from the anchor, stays inside the image and takes the next free index in
+  its `(type, team)` scope so it never collides with an existing logical slot. The index can
+  be changed afterwards.
 - **Duplicate** — the same thing for the slot the editor belongs to.
 
 The original slot is always preserved by a copy, a paste or a duplicate.

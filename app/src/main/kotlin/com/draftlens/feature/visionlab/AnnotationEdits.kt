@@ -34,11 +34,17 @@ object SlotPlacement {
      * The rectangle of a pasted or duplicated slot: the same size, moved by a small
      * offset and kept inside the image.
      */
-    fun offsetRect(rect: NormalizedRect, offset: Float = PASTE_OFFSET): NormalizedRect {
-        val width = rect.width
-        val height = rect.height
-        val left = (rect.left + offset).coerceAtMost(1f - width)
-        val top = (rect.top + offset).coerceAtMost(1f - height)
+    fun offsetRect(rect: NormalizedRect, offset: Float = PASTE_OFFSET): NormalizedRect =
+        offsetFrom(rect.left, rect.top, rect.width, rect.height, offset)
+
+    /**
+     * A rectangle of [width] by [height] placed [offset] away from the anchor's top-left
+     * corner, kept inside the image. The anchor may be a different slot than the one whose
+     * size is being copied.
+     */
+    fun offsetFrom(anchorLeft: Float, anchorTop: Float, width: Float, height: Float, offset: Float = PASTE_OFFSET): NormalizedRect {
+        val left = (anchorLeft + offset).coerceIn(0f, 1f - width)
+        val top = (anchorTop + offset).coerceIn(0f, 1f - height)
         return NormalizedRect(left, top, left + width, top + height)
     }
 }

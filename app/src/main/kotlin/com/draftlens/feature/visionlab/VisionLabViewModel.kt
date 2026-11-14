@@ -158,9 +158,16 @@ class VisionLabViewModel(
         return result
     }
 
-    /** Creates a slot drawn on the canvas and selects it. */
-    fun createSlot(rect: NormalizedRect): Result<DraftSlot> =
-        addSlot(SlotType.BAN, SlotTeam.ALLY, rect)
+    /**
+     * Creates a slot drawn on the canvas: the next default index, the new slot becomes the
+     * selection, and its property editor opens immediately so the user can set type, team,
+     * index and label without a second long press.
+     */
+    fun createSlot(rect: NormalizedRect): Result<DraftSlot> {
+        val result = addSlot(SlotType.BAN, SlotTeam.ALLY, rect)
+        result.onSuccess { openSlotMenu(it.id) }
+        return result
+    }
 
     fun moveSlot(id: String, deltaX: Float, deltaY: Float): Result<DraftSlot> =
         annotationStore.move(id, deltaX, deltaY).also { refreshSlots() }
@@ -202,10 +209,18 @@ class VisionLabViewModel(
 
     // region contextual property editor
 
-    /** Opens the property editor of a slot. */
+    /**
+     * Opens the property editor of a slot.
+     *
+     * The menu and the selection refer to the same slot: an unselected slot is selected
+     * first, so the selection outline, the resize handles, the delete control, the list
+     * highlight and the menu all agree.
+     */
     fun openSlotMenu(id: String) {
         if (annotationStore.slots().none { it.id == id }) return
+        annotationStore.select(id)
         _uiState.update { it.copy(menuSlotId = id) }
+        refreshSlots()
     }
 
     fun closeSlotMenu() {
@@ -224,13 +239,15 @@ class VisionLabViewModel(
 
     /**
      * Pastes the copied slot next to [targetSlotId], or next to the copied slot itself.
-     * The pasted slot gets a new id and the next free index in its scope.
+     * The copied slot is always the source: its type, team, label and rectangle dimensions
+     * are copied. [targetSlotId] only anchors the placement. The pasted slot gets a new id
+     * and the next free index in its scope.
      */
     fun pasteSlot(targetSlotId: String? = null): Result<DraftSlot> {
         val copied = _uiState.value.clipboardSlot
             ?: return Result.failure(IllegalStateException("Nothing has been copied"))
-        val source = targetSlotId?.let { id -> annotationStore.slots().firstOrNull { it.id == id } } ?: copied
-        return duplicateFrom(source)
+        val target = targetSlotId?.let { id -> annotationStore.slots().firstOrNull { it.id == id } }
+        return duplicateFrom(copied, anchor = target?.rect)
     }
 
     /** Duplicates a slot: a new id, a new index and a small offset. */
@@ -240,8 +257,10 @@ class VisionLabViewModel(
         return duplicateFrom(source)
     }
 
-    private fun duplicateFrom(source: DraftSlot): Result<DraftSlot> {
-        val rect = SlotPlacement.offsetRect(source.rect)
+    /** [anchor] places the copy when it is not the source (paste next to a target). */
+    private fun duplicateFrom(source: DraftSlot, anchor: NormalizedRect? = null): Result<DraftSlot> {
+        val at = anchor ?: source.rect
+        val rect = SlotPlacement.offsetFrom(at.left, at.top, source.rect.width, source.rect.height)
         val result = annotationStore.add(
             type = source.type,
             team = source.team,

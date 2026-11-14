@@ -38,6 +38,16 @@ fun SlotContextMenu(
 ) {
     var indexText by remember(slot.id, slot.index) { mutableStateOf(slot.index.toString()) }
     var labelText by remember(slot.id, slot.label) { mutableStateOf(slot.label ?: "") }
+    var error by remember(slot.id) { mutableStateOf<String?>(null) }
+
+    // Live feedback for the index field; the store rejections are shown in [error].
+    val indexValue = indexText.toIntOrNull()
+    val indexError = when {
+        indexText.isBlank() -> "Index is required"
+        indexValue == null -> "Index must be a number"
+        indexValue < 1 -> "Index must be at least 1"
+        else -> null
+    }
 
     DropdownMenu(
         expanded = true,
@@ -56,7 +66,7 @@ fun SlotContextMenu(
                 SlotType.entries.forEach { type ->
                     FilterChip(
                         selected = slot.type == type,
-                        onClick = { actions.onTypeChange(slot.id, type) },
+                        onClick = { error = actions.onTypeChange(slot.id, type).exceptionOrNull()?.message },
                         label = { Text(type.name) },
                     )
                 }
@@ -67,7 +77,7 @@ fun SlotContextMenu(
                 SlotTeam.entries.forEach { team ->
                     FilterChip(
                         selected = slot.team == team,
-                        onClick = { actions.onTeamChange(slot.id, team) },
+                        onClick = { error = actions.onTeamChange(slot.id, team).exceptionOrNull()?.message },
                         label = { Text(team.name) },
                     )
                 }
@@ -78,6 +88,8 @@ fun SlotContextMenu(
                 onValueChange = { indexText = it },
                 label = { Text("Index") },
                 singleLine = true,
+                isError = indexError != null,
+                supportingText = indexError?.let { message -> { Text(message) } },
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
@@ -88,11 +100,25 @@ fun SlotContextMenu(
                 modifier = Modifier.fillMaxWidth(),
             )
 
+            // Store rejections (a duplicate logical identity) are shown next to the controls,
+            // and the slot keeps its previous values.
+            error?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+
             Button(
                 onClick = {
-                    val index = indexText.toIntOrNull()
-                    if (index != null && index >= 1) actions.onIndexChange(slot.id, index)
-                    actions.onLabelChange(slot.id, labelText.takeIf { it.isNotBlank() })
+                    if (indexError != null) {
+                        error = indexError
+                        return@Button
+                    }
+                    val indexResult = actions.onIndexChange(slot.id, indexValue!!)
+                    val labelResult = actions.onLabelChange(slot.id, labelText.takeIf { it.isNotBlank() })
+                    error = indexResult.exceptionOrNull()?.message ?: labelResult.exceptionOrNull()?.message
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Apply") }

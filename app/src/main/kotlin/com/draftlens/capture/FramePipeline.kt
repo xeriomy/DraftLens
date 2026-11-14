@@ -44,8 +44,13 @@ class FramePipeline(
      * ImageReader size, so a rotation that leaves the capture size unchanged is still
      * reflected on the next frame.
      *
-     * Written from the display listener's thread and read from the ImageReader thread, so
-     * the visibility is explicit.
+     * Concurrency guarantee: written by the display listener's thread, read by the
+     * ImageReader thread. The property is [Volatile], and the ImageReader thread reads it
+     * exactly once per frame (at the `OriginalFrame` construction site in `start()`), so the
+     * value stamped on [OriginalFrame.displayRotation] always agrees with the value used to
+     * derive the orientation correction — the two can never see different rotations for the
+     * same frame. Documented rather than stress-tested: the failure mode of a racy read is a
+     * mismatch between these two fields, and this is the only read site.
      */
     @Volatile
     var displayRotation: FrameRotation = FrameRotation.ROTATION_0
@@ -90,14 +95,16 @@ class FramePipeline(
                         }
                         sampler.markEmitted(sampledAtMs)
                         val processingLatencyMs = System.currentTimeMillis() - wallStartedAtMs
+                        // One read per frame: both fields below see the same rotation.
+                        val frameDisplayRotation = displayRotation
                         val visionFrame = OriginalFrame(
                             id = FrameId.random(),
                             payload = payload,
                             sourceWidth = width,
                             sourceHeight = height,
-                            displayRotation = displayRotation,
+                            displayRotation = frameDisplayRotation,
                             // MediaProjection buffers are display-oriented; never double-rotate pixels.
-                            rotation = FrameOrientation.correctionFor(displayRotation),
+                            rotation = FrameOrientation.correctionFor(frameDisplayRotation),
                             capturedAtElapsedRealtimeMs = sampledAtMs,
                             wallClockTimestampMs = System.currentTimeMillis(),
                             captureLatencyMs = processingLatencyMs

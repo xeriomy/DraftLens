@@ -56,15 +56,26 @@ label, plus **Copy**, **Paste** and **Duplicate**. It positions itself inside th
 it is never clipped off-screen in either orientation, and it no longer occupies a permanent
 part of the canvas. The old bottom property controls and the "Add slot" card with its
 hardcoded rectangle are gone; creating a slot is now a long press and a drag on the image.
+Opening the menu selects the slot first, so the menu and the selection always agree. Creating
+a drawn slot selects it and opens its editor immediately. A type, team or index change that
+would produce a duplicate logical identity is refused with the reason shown next to the
+controls, the slot keeps its previous values and the editor stays open; invalid index text is
+flagged inline.
 
-Copy and paste use the application's own clipboard, never the Android system clipboard. A
-pasted slot gets a new unique id, is offset a little, stays inside the image and takes the
-next free index in its `(type, team)` scope. The source slot is always preserved.
+Copy and paste use the application's own clipboard, never the Android system clipboard. The
+copied slot is always the source: a pasted slot gets a new unique id, takes the copied
+slot's type, team, label and rectangle dimensions, is offset a little from the anchor (the
+target slot when paste is invoked from its menu, the copied slot otherwise), stays inside
+the image and takes the next free index in the copied slot's `(type, team)` scope. The
+source and the target are never modified or deleted.
 
 ### Deletion and undo
 
 The selected slot shows an X control at its top-right corner, drawn in red and distinct from
-the resize handles. Deleting uses the slot's stable id. **Undo** covers a deletion, a
+the resize handles. The touch target is 48 dp in diameter, derived from the screen density,
+the hit test uses the same density-aware geometry as the drawing, and the control is drawn
+outside the canvas clip region so it stays fully visible against a canvas edge. Deleting
+uses the slot's stable id. **Undo** covers a deletion, a
 creation and a move or resize; a deletion is undone by restoring the slot with its own id.
 
 ### The slot list
@@ -80,11 +91,13 @@ three slots and checks that the other two survive.
 
 ### Fullscreen editor
 
-*Fullscreen* opens the image on its own screen in either orientation, fitted to the screen,
-with pinch-to-zoom and pan, *Fit to screen* and *Reset zoom*, a compact control row and a
-*Done* action. The image and the overlay are drawn under the same transform and pointer
-positions are mapped back through its inverse, so the overlay stays aligned while zooming.
-The gesture hint appears when the editor is entered and can be dismissed.
+*Fullscreen* opens the image on its own screen in either orientation: a compact expand icon
+in the corner of the canvas card opens it, the image and canvas fill the full available
+phone workspace, and a compact collapse icon in the corner leaves it. There is no zoom, no
+pan, no *Fit to screen* and no *Reset zoom* — the frame is fitted into the screen and the
+slot overlay stays aligned with it. Android Back leaves the fullscreen editor first, and
+only then the Vision Lab. The gesture hint appears when the editor is entered and can be
+dismissed.
 
 ### Slot colours
 
@@ -116,6 +129,41 @@ Four corrections were applied on top of the interaction rework.
    first touch, so moving, resizing and drawing a slot never scrolls the page. Scrolling
    stays available everywhere else, and the fullscreen canvas is not inside a scrolling
    parent at all.
+
+### Sprint 1A.2 — bug-fix pass
+
+Seven focused fixes on top of 1A.1, each with regression tests:
+
+1. **Paste reads from the clipboard.** `pasteSlot()` used to read the target slot as the
+   source, so pasting from another slot's menu duplicated that slot instead of the copied
+   one. The clipboard slot is now always the source of type, team, label and rectangle
+   dimensions; the target only anchors the placement, and the pasted rectangle is offset from
+   the anchor (or from the copied slot when no target exists) and kept inside the image.
+   The copied source and the target are never modified.
+2. **The menu and the selection are the same slot.** `openSlotMenu()` validates the id,
+   selects that exact slot and only then opens the menu, so the outline, the handles, the
+   delete control, the list highlight and the menu always refer to one slot. Creating a
+   drawn slot selects it and opens its property editor immediately.
+3. **The delete control is density-aware.** The X stays exactly at the top-right corner
+   where the top-right resize handle used to be. The touch target is 48 dp in diameter, the
+   hit test uses the same density-aware geometry as the drawing, and the control is drawn
+   outside the canvas clip region so it is not cut off at the canvas edges. On a
+   minimum-size rectangle the remaining handles win the overlap with the delete control.
+4. **An early drag cancels the pending long press.** Moving past the touch slop before the
+   timeout now cancels it: a drag on an unselected slot only selects it, a drag on a
+   selected slot moves it, and a drag on empty space never turns into slot creation. Once
+   the timeout fires, the deadline is abandoned, so later movement can neither delay nor
+   re-open the menu. The 450 ms threshold is unchanged.
+5. **One rotation snapshot per captured frame.** `FramePipeline.displayRotation` stays
+   `@Volatile`, and the ImageReader thread reads it once per frame; the same local value is
+   stamped on the frame and used for the orientation correction, so the two can never
+   disagree. The MediaProjection pixel-orientation behaviour is unchanged.
+6. **Validation failures are visible.** A type, team or index change refused because of a
+   duplicate logical identity now shows the reason next to the controls, keeps the slot's
+   previous values and keeps the editor open. Invalid index text is flagged inline in the
+   index field.
+7. **This report.** The fullscreen section no longer describes the removed pinch-to-zoom,
+   pan, *Fit to screen* and *Reset zoom* controls.
 
 ---
 

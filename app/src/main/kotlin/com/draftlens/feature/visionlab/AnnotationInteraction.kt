@@ -97,6 +97,8 @@ class AnnotationInteraction(
         val pressedSlotWasSelected: Boolean = false,
         /** True once the long-press threshold elapsed. */
         val longPressFired: Boolean = false,
+        /** True once the pointer moved past the touch slop before the timeout elapsed. */
+        val longPressCancelled: Boolean = false,
     )
 
     data class Result(val state: State, val action: AnnotationAction = AnnotationAction.None)
@@ -133,15 +135,20 @@ class AnnotationInteraction(
     fun drag(state: State, distancePx: Float): Result {
         if (distancePx < touchSlopPx) return Result(state)
         return when (state.phase) {
-            Phase.Pressed -> when {
-                state.slotId != null && state.pressedSlotWasSelected ->
-                    Result(state.copy(phase = Phase.Moving))
-                state.slotId != null ->
-                    // An unselected slot is selected, but never moved: a drag must not move
-                    // the wrong slot.
-                    Result(state, AnnotationAction.Select(state.slotId))
-                state.longPressFired -> Result(state.copy(phase = Phase.Drawing))
-                else -> Result(state)
+            Phase.Pressed -> {
+                // Moving past the slop before the timeout cancels the pending long press, so
+                // a drag can never turn into a menu opening or a drawing starting later.
+                val cancelled = state.copy(longPressCancelled = true)
+                when {
+                    state.slotId != null && state.pressedSlotWasSelected ->
+                        Result(cancelled.copy(phase = Phase.Moving))
+                    state.slotId != null ->
+                        // An unselected slot is selected, but never moved: a drag must not move
+                        // the wrong slot.
+                        Result(cancelled, AnnotationAction.Select(state.slotId))
+                    state.longPressFired -> Result(cancelled.copy(phase = Phase.Drawing))
+                    else -> Result(cancelled)
+                }
             }
             else -> Result(state)
         }
@@ -149,7 +156,9 @@ class AnnotationInteraction(
 
     /** The long-press threshold elapsed without the pointer moving past the touch slop. */
     fun longPress(state: State): Result = when (state.phase) {
-        Phase.Pressed -> if (state.slotId != null) {
+        Phase.Pressed -> if (state.longPressCancelled) {
+            Result(state)
+        } else if (state.slotId != null) {
             Result(
                 state.copy(phase = Phase.Menu, longPressFired = true),
                 AnnotationAction.OpenMenu(state.slotId),
@@ -186,6 +195,20 @@ class AnnotationInteraction(
     companion object {
         const val DEFAULT_LONG_PRESS_TIMEOUT_MS = 450L
         const val DEFAULT_TOUCH_SLOP_PX = 24f
+
+        /**
+         * True while the pointer handler should wait for the long-press timeout with a
+         * deadline. Only a press still in the [Phase.Pressed] state arms the deadline; once
+         * the pointer moved past the slop ([State.longPressCancelled]), the timeout already
+         * fired ([State.longPressFired]), or the press resolved into another phase, the
+         * deadline is abandoned and the handler waits indefinitely for the next pointer
+         * event instead — so movement can neither cancel, delay nor reopen the menu.
+         */
+        fun shouldAwaitLongPress(state: State, timeoutMs: Long, elapsedMs: Long): Boolean =
+            state.phase == Phase.Pressed &&
+                !state.longPressFired &&
+                !state.longPressCancelled &&
+                timeoutMs - elapsedMs > 0L
     }
 }
 
@@ -197,6 +220,11 @@ class AnnotationInteraction(
  */
 object AnnotationTargetResolver {
 
+    /**
+     * The handles are checked before the delete control, so the delete control never
+     * swallows a touch meant for a resize handle where they would otherwise overlap on a
+     * very small rectangle.
+     */
     fun resolve(
         geometry: CanvasGeometry,
         fitted: Rect,
@@ -204,22 +232,20 @@ object AnnotationTargetResolver {
         slots: List<DraftSlot>,
         selectedSlotId: String?,
         handleRadiusPx: Float,
+        deleteRadiusPx: Float,
     ): AnnotationTarget {
         val selected = slots.firstOrNull { it.id == selectedSlotId }
         if (selected != null) {
-            val delete = geometry.deleteControlCenter(selected.rect, fitted)
-            if ((offset - delete).getDistance() <= DELETE_CONTROL_RADIUS_PX * 1.5f) {
-                return AnnotationTarget.Delete(selected.id)
-            }
             geometry.handleAt(selected.rect, offset, fitted, handleRadiusPx)?.let { corner ->
                 return AnnotationTarget.Handle(selected.id, corner, selected.rect)
+            }
+            val delete = geometry.deleteControlCenter(selected.rect, fitted)
+            if ((offset - delete).getDistance() <= deleteRadiusPx) {
+                return AnnotationTarget.Delete(selected.id)
             }
         }
         val point = geometry.canvasToNormalized(offset, fitted) ?: return AnnotationTarget.Outside
         AnnotationHitTest.slotAt(point, slots)?.let { return AnnotationTarget.Slot(it.id, it.rect) }
         return AnnotationTarget.Empty
     }
-
-    /** Visual radius of the delete control, in canvas pixels. */
-    const val DELETE_CONTROL_RADIUS_PX = 14f
 }
