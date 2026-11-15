@@ -86,6 +86,9 @@ object AndroidBitmapSlotImageExtractor : SlotImageExtractor {
             source.getPixels(src, 0, width, 0, 0, width, height)
             val dst = IntArray(outWidth * outHeight)
             when (rotation) {
+                // ROTATION_0 returned early above.
+                FrameRotation.ROTATION_0 -> Unit
+
                 FrameRotation.ROTATION_90 ->
                     for (y in 0 until height) {
                         for (x in 0 until width) {
