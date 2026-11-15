@@ -58,6 +58,8 @@ class CaptureSessionService : Service() {
     private var frameJob: Job? = null
     private var frozenJob: Job? = null
     private var foregroundPromoted = false
+    /** Increments once per capture session; tags every structured log line. */
+    private var sessionCounter = 0
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -66,7 +68,9 @@ class CaptureSessionService : Service() {
         }
 
         override fun onCapturedContentResize(width: Int, height: Int) {
-            recreateDisplay(width, height, resources.configuration.densityDpi)
+            // The captured-content dimensions are authoritative; they are not the same as
+            // the display-window metrics the session started with (that is the landscape bug).
+            recreateDisplay(width, height, source = "captured-content-resize")
         }
     }
 
@@ -171,6 +175,7 @@ class CaptureSessionService : Service() {
             return
         }
 
+        sessionCounter += 1
         sampler.setIntervalMs(intervalMs)
         releaseCaptureResources(releaseForeground = false)
 
@@ -195,6 +200,7 @@ class CaptureSessionService : Service() {
                         val (captureWidth, captureHeight) = captureDimensions(wm)
                         val dpi = resources.configuration.densityDpi
                         val displayRotation = currentDisplayRotation()
+                        Log.i(TAG, "session=$sessionCounter capture-start: dimensions=${captureWidth}x${captureHeight} dpi=$dpi rotation=$displayRotation source=windowMetrics")
 
                         pipeline.start(captureWidth, captureHeight, dpi, displayRotation)
                         CaptureFreeze.attachPipeline(pipeline)
@@ -318,21 +324,34 @@ class CaptureSessionService : Service() {
             null,
             null
         ) ?: error("createVirtualDisplay() returned null")
-        Log.i(TAG, "VirtualDisplay created (${width}x${height}, ${densityDpi}dpi)")
+        Log.i(TAG, "session=$sessionCounter virtual-display created: ${width}x${height} dpi=$densityDpi (auto-mirror of the default display)")
     }
 
-    private fun recreateDisplay(width: Int, height: Int, densityDpi: Int) {
+    /**
+     * Applies new captured-content dimensions to the VirtualDisplay/ImageReader pair.
+     * [source] identifies which signal requested it ("captured-content-resize" — the
+     * authoritative callback, or "display-listener" — the rotation/size fallback); both
+     * funnel here so the handling is identical and idempotent.
+     */
+    private fun recreateDisplay(width: Int, height: Int, source: String) {
+        val densityDpi = resources.configuration.densityDpi
         val display = virtualDisplay ?: run {
-            Log.e(TAG, "Resize requested but VirtualDisplay is missing")
+            Log.e(TAG, "session=$sessionCounter resize requested ($source) but VirtualDisplay is missing")
             failProjectionSession("VirtualDisplay disappeared during resize", null)
             return
         }
-        if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING) return
+        if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING) {
+            Log.i(TAG, "session=$sessionCounter ignoring $source ${width}x${height}: capture is not in CAPTURING state")
+            return
+        }
 
         val displayRotation = currentDisplayRotation()
+        val currentWidth = CaptureStateHolder.state.value.displayWidth
+        val currentHeight = CaptureStateHolder.state.value.displayHeight
+        Log.i(TAG, "session=$sessionCounter $source: ${currentWidth}x${currentHeight} -> ${width}x${height} dpi=$densityDpi rotation=$displayRotation")
         val change = DisplayChangePolicy.classify(
-            CaptureStateHolder.state.value.displayWidth,
-            CaptureStateHolder.state.value.displayHeight,
+            currentWidth,
+            currentHeight,
             width,
             height,
         )
@@ -340,19 +359,26 @@ class CaptureSessionService : Service() {
             is DisplayChange.RotationOnly -> {
                 // The capture size is unchanged: only the rotation metadata needs updating.
                 updateDisplayRotation(displayRotation)
-                Log.i(TAG, "Display rotation updated to $displayRotation without resizing")
+                Log.i(TAG, "session=$sessionCounter rotation-only update: rotation=$displayRotation without resizing")
             }
 
             is DisplayChange.Resize -> {
                 try {
-                    val replacement = pipeline.prepareResize(width, height, densityDpi, displayRotation) ?: return
-                    // Caller owns cleanup after detach; VirtualDisplay must not retain a released Surface.
+                    val replacement = pipeline.prepareResize(width, height, densityDpi, displayRotation)
+                    if (replacement == null) {
+                        Log.i(TAG, "session=$sessionCounter resize no-op: dimensions already match")
+                        return
+                    }
+                    // Detach first: the VirtualDisplay must not retain a released Surface.
+                    Log.i(TAG, "session=$sessionCounter surface-detach from VirtualDisplay (previous generation)")
                     display.setSurface(null)
+                    Log.i(TAG, "session=$sessionCounter releasing previous ImageReader/surface/thread")
                     replacement.closePrevious()
+                    Log.i(TAG, "session=$sessionCounter surface-attach new reader generation to VirtualDisplay")
                     display.setSurface(replacement.surface)
                     display.resize(width, height, densityDpi)
                     CaptureStateHolder.updateDisplay(width, height, densityDpi)
-                    Log.i(TAG, "VirtualDisplay resized (${width}x${height}, ${densityDpi}dpi)")
+                    Log.i(TAG, "session=$sessionCounter virtual-display resized: ${width}x${height} dpi=$densityDpi generation=${pipeline.peekGeneration()}")
                 } catch (e: Exception) {
                     failProjectionSession("Failed to resize VirtualDisplay", e)
                 }
@@ -372,6 +398,11 @@ class CaptureSessionService : Service() {
     /**
      * Watches the default display so an orientation change is picked up even when the
      * captured content keeps its size and MediaProjection reports no resize.
+     *
+     * Sizing itself is re-checked here as well: on API levels below the captured-content
+     * callback (or whenever a rotation re-lays the display), the VirtualDisplay would
+     * otherwise keep the session-start dimensions forever (the whole-screen landscape
+     * bug). Both paths funnel into [recreateDisplay], which is idempotent.
      */
     private fun registerDisplayListener() {
         val manager = getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager ?: return
@@ -381,15 +412,24 @@ class CaptureSessionService : Service() {
 
             override fun onDisplayChanged(displayId: Int) {
                 if (displayId == Display.DEFAULT_DISPLAY) {
+                    Log.i(TAG, "session=$sessionCounter default-display changed")
                     updateDisplayRotation(currentDisplayRotation())
+                    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                    val (width, height) = captureDimensions(wm)
+                    val current = CaptureStateHolder.state.value
+                    if (width != current.displayWidth || height != current.displayHeight) {
+                        Log.i(TAG, "session=$sessionCounter display metrics changed ${current.displayWidth}x${current.displayHeight} -> ${width}x${height}; resyncing capture size")
+                        recreateDisplay(width, height, source = "display-listener")
+                    }
                 }
             }
         }
         try {
             manager.registerDisplayListener(listener, null)
             displayListener = listener
+            Log.i(TAG, "session=$sessionCounter display listener registered")
         } catch (e: Exception) {
-            Log.w(TAG, "Display listener registration failed", e)
+            Log.w(TAG, "session=$sessionCounter display listener registration failed", e)
         }
     }
 
@@ -399,8 +439,9 @@ class CaptureSessionService : Service() {
         try {
             (getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
                 ?.unregisterDisplayListener(listener)
+            Log.i(TAG, "session=$sessionCounter display listener unregistered")
         } catch (e: Exception) {
-            Log.w(TAG, "Display listener unregister failed", e)
+            Log.w(TAG, "session=$sessionCounter display listener unregister failed", e)
         }
     }
 
@@ -420,26 +461,29 @@ class CaptureSessionService : Service() {
     }
 
     private fun releaseCaptureResources(releaseForeground: Boolean) {
+        Log.i(TAG, "session=$sessionCounter release: captureJob/frameJob/frozenJob cancelled=${captureJob != null || frameJob != null || frozenJob != null}")
         captureJob?.cancel()
         captureJob = null
         frameJob?.cancel()
         frameJob = null
         frozenJob?.cancel()
         frozenJob = null
-        try { virtualDisplay?.release() } catch (e: Exception) { Log.w(TAG, "VirtualDisplay release failed", e) }
+        try { virtualDisplay?.release() } catch (e: Exception) { Log.w(TAG, "session=$sessionCounter VirtualDisplay release failed", e) }
+        if (virtualDisplay != null) Log.i(TAG, "session=$sessionCounter virtual-display released")
         virtualDisplay = null
         unregisterDisplayListener()
         try {
             projection?.unregisterCallback(projectionCallback)
             projection?.stop()
+            Log.i(TAG, "session=$sessionCounter media-projection released")
         } catch (e: Exception) {
-            Log.w(TAG, "MediaProjection stop failed", e)
+            Log.w(TAG, "session=$sessionCounter MediaProjection stop failed", e)
         }
         projection = null
         if (::pipeline.isInitialized) {
             CaptureFreeze.detachPipeline(pipeline)
         }
-        try { pipeline.stop() } catch (e: Exception) { Log.w(TAG, "Pipeline stop failed", e) }
+        try { pipeline.stop() } catch (e: Exception) { Log.w(TAG, "session=$sessionCounter Pipeline stop failed", e) }
         if (releaseForeground) {
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {

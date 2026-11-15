@@ -16,6 +16,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
 class DraftLensApp : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        com.draftlens.vision.preprocessing.PreprocessLog.sink = { message ->
+            android.util.Log.i("VisionPreprocessor", message)
+        }
+    }
+
     val preferences: AppPreferencesRepository by lazy {
         AppPreferencesRepository(this)
     }

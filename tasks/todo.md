@@ -115,5 +115,12 @@ PASS** (device details not supplied). The MediaProjection lifecycle matrix is **
       URL change forces re-download; failed refresh keeps previous asset; HTTPS-only redirects)
 - [x] Part G: atomic snapshot/asset writes; failure preserves previous snapshot; temp files swept
 - [x] Part H: reference Bitmap dims read before recycling
-- [x] CI green on the final head (run 43746648882, head 1c7397b925dd2683b3d763e552d610d2e464ecb7; instrumentation compiled, not executed — no KVM on the runner)
-- [ ] Physical-device smoke test and on-device accuracy evaluation (pending)
+- [x] Landscape capture fix (MLBB): authoritative captured-content resize via
+      `onCapturedContentResize` + `DisplayManager` fallback to current window metrics;
+      VirtualDisplay/ImageReader re-created at the reported size; generation numbers reject
+      stale reader callbacks; plane conversion honors `image.cropRect` and padded rows;
+      structured diagnostics in `CaptureSessionService`/`FramePipeline`/`VisionPreprocessor`
+- [ ] CI green on the new head for this revision (see PR description for the latest run)
+- [ ] Physical-device smoke of the freeze workflow; on-device accuracy evaluation;
+      threshold/heuristic calibration (pending)
+- [ ] Physical-device verification of the landscape capture fix in MLBB (rows 23–32) (pending)

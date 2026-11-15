@@ -150,6 +150,15 @@ No recommendation features, no overlays, no automation, PR stays draft and unmer
 - [x] Part B: pixel extractor rotation fixed to the `FrameTransform.sourceToOriented()`
       convention; tests rewritten with asymmetric non-square fixtures and hand-computed
       expected values
+- [x] Landscape capture fix (MLBB portrait→landscape rotation bug):
+      - authoritative `onCapturedContentResize` signal feeds one idempotent resize path;
+      - `DisplayManager` fallback re-derives the capture size on any display change;
+      - VirtualDisplay/ImageReader re-created at the reported size;
+      - capture generations reject stale reader callbacks at listener and publish time;
+      - plane conversion honors `image.cropRect` and padded rows (`RgbaPlaneCopy`, JVM-tested
+        with asymmetric fixtures, letterboxed crops and stride variants);
+      - structured diagnostics in `CaptureSessionService`/`FramePipeline`/`VisionPreprocessor`;
+      - physical-device verification pending (rows 23–32 of `docs/TESTING_PHYSICAL_DEVICE.md`)
 - [x] Part C: Android extractor validates Bitmap dimensions, pixel-exact rotation, source
       bitmap preserved, every temporary released exactly once; instrumentation tests added
 - [x] Part D: `VisualInformationAnalyzer` (variance, edge density, meaningful differences,

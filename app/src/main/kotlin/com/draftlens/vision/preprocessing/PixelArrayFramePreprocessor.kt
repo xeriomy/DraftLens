@@ -27,6 +27,11 @@ object PixelArrayFramePreprocessor : FramePreprocessor {
             is PreprocessPlanResult.Failure -> return ProcessFrameResult.Failure(result.reason)
             is PreprocessPlanResult.Success -> result.plan
         }
+        PreprocessLog.write(
+            "preprocess(PixelArray): source=${input.sourceWidth}x${input.sourceHeight} " +
+                "rotation=${plan.rotation} crop=${plan.crop} output=${plan.outputWidth}x${plan.outputHeight} " +
+                "scale=${plan.transform.scale}",
+        )
         val payload = input.payload
         if (payload !is PixelArrayFramePayload) {
             return ProcessFrameResult.Failure(

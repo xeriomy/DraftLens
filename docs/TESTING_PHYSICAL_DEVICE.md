@@ -41,12 +41,24 @@ Status values: **PASS**, **FAIL**, **PARTIAL**, **NOT RUN**. Record the commit S
 | 20 | Notifications disabled | Freeze action unreachable from the shade; the app warns and offers to enable them; in-app Freeze/Resume still work | NOT RUN |
 | 21 | Stop with a frame frozen | Projection and resources are released; the frozen frame remains available in Vision Lab until Resume/Clear or a new capture session; it does not survive process death | NOT RUN |
 | 22 | Freeze during low frame availability | No frame → the action logs and keeps state; first valid frame freezes on the next tap | NOT RUN |
+| 23 | Landscape game capture end-to-end | MLBB in landscape: frame shows the *entire* game, no black region; verify both session-start-in-landscape and portrait→landscape rotation; also landscape→portrait→landscape twice | NOT RUN |
+| 24 | Portrait app capture after landscape game | Switch back to a portrait app; frame again shows the whole portrait app without black regions | NOT RUN |
+| 25 | Resize with freeze active | Freeze from the notification while in MLBB; rotate device; frozen frame still shows the pinned game frame; no stale-frame overwrite; Resume continues the *current* generation | NOT RUN |
+| 26 | cropRect/letterbox handling | Session starts in portrait, game opens landscape before any resize lands: frame is letterboxed-but-complete (no garbage), replaced by the full-size frame after the resize | NOT RUN |
+| 27 | Stride-heavy device | On a device/GPU whose ImageReader reports `rowStride > width * 4`: landscape frame is pixel-shifted-free, no skewed rows; compare a full-screen region against a hardware screenshot | NOT RUN |
+| 28 | Resize storm | Rotate device repeatedly portrait↔landscape 6+ times: one generation settles per change; no crash, no stale-dimension frame, notification still shows LIVE | NOT RUN |
+| 29 | Resize while capture is paused | Pause during landscape→portrait; the resize still applies and is logged; resume shows the resized frame | NOT RUN |
+| 30 | Freeze after resize | After a portrait→landscape resize, tap Freeze: pinned frame is the landscape frame at the new dimensions, complete | NOT RUN |
+| 31 | Mismatch diagnosis | Intentionally start capture with the game in landscape, then force-stop rotation events via lock/unlock: collect `CaptureSessionService`/`FramePipeline` logcat and verify dimensions, cropRect, rowStride and generation lines; confirm no frame mixes generations | NOT RUN |
+| 32 | Single-app share resize (API 34+) | Share only the MLBB window: capture resizes to the window's content size via `onCapturedContentResize`; the app logs the resize; releasing the app restores the full share | NOT RUN |
 
 ## Evidence to capture each run
 - `git rev-parse --short HEAD`
 - Device model and Android version (`adb shell getprop ro.product.model`, `adb shell getprop ro.build.version.release`)
 - DraftLens version/APK artifact run ID
-- Logcat lines tagged `CaptureSessionService`
+- Logcat lines tagged `CaptureSessionService`, `FramePipeline`, `VisionPreprocessor`
+  (`adb logcat -v time -s CaptureSessionService FramePipeline VisionPreprocessor`) for the
+  capture dimensions, resize events, plane layout and frame-generation lines
 - Initial resolution, frame count after 10 seconds, preview visible Y/N
 - For failures: full exception and steps immediately before it
 

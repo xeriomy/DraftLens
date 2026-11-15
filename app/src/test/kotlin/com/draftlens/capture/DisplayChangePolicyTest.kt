@@ -26,6 +26,29 @@ class DisplayChangePolicyTest {
             DisplayChangePolicy.classify(1080, 1920, 1200, 1920),
         )
     }
+
+    @Test fun `a portrait-to-landscape rotation always swaps dimensions and needs a resize`() {
+        assertEquals(
+            DisplayChange.Resize(2400, 1080),
+            DisplayChangePolicy.classify(1080, 2400, 2400, 1080),
+        )
+    }
+
+    @Test fun `a landscape-to-portrait rotation always swaps dimensions and needs a resize`() {
+        assertEquals(
+            DisplayChange.Resize(1080, 2400),
+            DisplayChangePolicy.classify(2400, 1080, 1080, 2400),
+        )
+    }
+
+    @Test fun `repeated identical resize callbacks are a rotation-only update`() {
+        // The same callback can fire several times for one display change; the classification
+        // must be idempotent so the pipeline is not needlessly recreated.
+        assertEquals(
+            DisplayChange.RotationOnly,
+            DisplayChangePolicy.classify(2400, 1080, 2400, 1080),
+        )
+    }
 }
 
 class FramePipelineRotationTest {
