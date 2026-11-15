@@ -17,7 +17,7 @@ object CaptureFreeze {
 
     /** Called by the capture service once its pipeline exists. */
     fun attachPipeline(instance: FramePipeline) {
-        pipeline = instance
+        synchronized(this) { pipeline = instance }
     }
 
     /** Called by the capture service during teardown; a stale reference is dropped. */
@@ -26,9 +26,6 @@ object CaptureFreeze {
             if (pipeline === instance) pipeline = null
         }
     }
-
-    /** True when an active pipeline is installed (i.e. capture is running). */
-    fun isCapturing(): Boolean = pipeline != null
 
     fun freezeCurrentFrame(): FreezeOutcome {
         val current = CaptureStateHolder.frozenFrame.value
