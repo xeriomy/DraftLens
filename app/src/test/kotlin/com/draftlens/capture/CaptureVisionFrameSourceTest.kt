@@ -104,7 +104,7 @@ class CaptureVisionFrameSourceTest {
 
         val delivered = runBlocking {
             withTimeout(AWAIT_TIMEOUT_MS) { adapter.frozenFrame.first { it != null } }
-        }
+        }!!
         assertEquals("test-frame", delivered.id.value)
     }
 

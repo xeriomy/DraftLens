@@ -31,8 +31,10 @@ class FileHeroCatalogRepository(
     private val dataDir: File,
     private val cacheDir: File,
     private val transport: HeroCatalogTransport,
-    private val clock: () -> Long = System::currentTimeMillis,
+    // Trailing lambdas bind to the last parameter, so the clock must come last;
+    // imageValidator is a SAM too — a lambda would otherwise land on it.
     private val imageValidator: ReferenceImageValidator = StructuralImageValidator,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) : HeroCatalogRepository {
 
     private val snapshotFile = File(dataDir, "hero-catalog/catalog.json")
