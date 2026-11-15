@@ -134,3 +134,44 @@ grow without re-architecture.
 - Slot extraction from the annotation canvas with rotation coverage.
 - Recognition v0 with labeled similarity and explicit no-match; manual confirmation required.
 - Draft PR #3; accuracy on real screens not measured; device smoke pending.
+
+## Sprint 1B — Review fixes and game-frame freeze (this revision)
+Objective: fix the PR #3 review findings (freeze from the notification; rotation bugs;
+blank-image rejection; manual correction everywhere; cache freshness; atomic persistence;
+reference-loader ownership) and wire the freeze workflow through the capture architecture.
+No recommendation features, no overlays, no automation, PR stays draft and unmerged.
+
+### Work items in order
+- [x] Freeze a game frame from the notification (`CaptureFreeze`, `ACTION_FREEZE` /
+      `ACTION_RESUME_LIVE`, `FramePipeline` freeze gate, independently owned snapshot via
+      `FrameSnapshots`, FROZEN notification with Resume action, in-app Resume unchanged)
+- [x] Full-device-capture guidance; POST_NOTIFICATIONS handling; freeze actions in the
+      expanded notification; no Activity launched by the command
+- [x] Part B: pixel extractor rotation fixed to the `FrameTransform.sourceToOriented()`
+      convention; tests rewritten with asymmetric non-square fixtures and hand-computed
+      expected values
+- [x] Part C: Android extractor validates Bitmap dimensions, pixel-exact rotation, source
+      bitmap preserved, every temporary released exactly once; instrumentation tests added
+- [x] Part D: `VisualInformationAnalyzer` (variance, edge density, meaningful differences,
+      minimum dimensions) gates matching with a distinct `InsufficientVisualInformation`
+      outcome and `INSUFFICIENT_INFO` UI state; blank crops never produce candidates
+- [x] Part E: manual correction reachable from CANDIDATES, NO_MATCH, FAILED,
+      INSUFFICIENT_INFO and CONFIRMED; Change… opens correction instead of Identify;
+      failed persistence reported, never shown as success
+- [x] Part F: cache freshness — per-asset `*.meta` sidecar (URL, SHA-256, size, content
+      type), serve-time validation (hash, magic bytes, container structure, Android decode),
+      URL change forces re-download, failed refresh keeps previous asset, HTTP downgrades
+      refused everywhere
+- [x] Part G: snapshot/asset writes are temp-sibling + flush/sync + `ATOMIC_MOVE` only;
+      no direct-write fallback; failures preserve the previous target; `*.tmp` swept
+- [x] Part H: reference loader reads dimensions before recycling; pixels read before release;
+      exceptional paths recycle too
+- [ ] CI green on the final head (unit tests, lint, assembleDebug, assembleAndroidTest,
+      instrumented job on the emulator)
+- [ ] Physical-device smoke of the notification freeze workflow; on-device accuracy
+      evaluation; real-screen threshold and heuristic calibration
+
+### Sprint 1B verification
+See `docs/VISION_TESTING.md` for the exact CI runs, test totals and what was and was not
+executed. The authoring host remains aarch64, so the CI is the build of record.
+Physical-device verification of the freeze workflow is pending.

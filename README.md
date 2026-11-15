@@ -30,6 +30,10 @@ and [docs/VISION_TESTING.md](docs/VISION_TESTING.md).
 - Hero recognition v0 (Sprint 1B, PR #3): hero catalog sync from public static data,
   explicit Identify action for the selected slot, ranked candidates with similarity scores,
   manual confirm/correct — **accuracy on real game screens is not measured yet**
+- Freeze the game frame from the notification (Sprint 1B): tap **Freeze current frame** on the
+  capture notification while you are in MLBB — no need to leave the game; Vision Lab shows the
+  pinned game frame, not the DraftLens screen; **Resume live capture** from the notification or
+  in the Vision Lab
 
 ## What is deliberately NOT here (later milestones)
 ML hero recognition, recommendation engine, counter/synergy/role scoring, floating overlays,
@@ -53,14 +57,23 @@ build of record.** See `docs/VISION_TESTING.md` for exactly what ran.
 1. Install the APK from the `draftlens-debug` CI artifact on a physical device (the emulator
    validates compilation, not MediaProjection reliability).
 2. Open the app; the **Debug Capture** tab is first.
-3. Tap **Start Capture** → grant the system screen-capture consent dialog.
-4. MLBB (or any app) — the debug screen shows live frames.
-5. Switch to the **Vision Lab** tab. Capture keeps running while you are there.
-6. Freeze a frame, drag out a slot rectangle, then edit it in the text editor below the
-   canvas. Press **Process Frame** to run the preprocessing engine on the selected frame.
-7. Save the annotations as a calibration profile; apply it later on a matching frame.
-8. **Stop Capture**, or the notification's **Stop**, or revoke consent in Settings to
-   exercise teardown.
+3. Tap **Start Capture** → grant the system screen-capture consent dialog. When Android asks
+   what to capture, choose **Entire screen / full device display** — app-window capture shows
+   this app, not Mobile Legends, and the notification freeze workflow would be pointless.
+4. Open Mobile Legends and wait for the draft screen you want to annotate.
+5. Pull down the notification shade and tap **Freeze current frame** on the DraftLens capture
+   notification (notifications must be enabled — the app checks and tells you).
+6. Switch back to **DraftLens → Vision Lab**. Capture kept running; the Vision Lab shows the
+   pinned MLBB frame instead of the DraftLens screen.
+7. Draw a slot rectangle, then run **Identify hero** on the frozen frame. Candidates are
+   similarity scores, not probabilities — confirm or correct manually (the manual search is
+   available in every recognition state).
+8. Tap **Resume live capture** in the notification, or **Resume** in the Vision Lab, to show
+   live frames again. No second capture session is created.
+9. Press **Process Frame** to run the preprocessing engine on the selected frame.
+10. Save the annotations as a calibration profile; apply it later on a matching frame.
+11. **Stop Capture**, or the notification's **Stop**, or revoke consent in Settings to
+    exercise teardown.
 
 ## Docs
 - `docs/ARCHITECTURE.md` — module layout, state machine, data flow, Vision boundary

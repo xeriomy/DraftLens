@@ -1,4 +1,4 @@
-# Screen Capture — DraftLens Sprint 0.1.3
+# Screen Capture — DraftLens Sprint 0.1.3 + 1B
 
 ## Mechanism
 `MediaProjectionManager.createScreenCaptureIntent()` → user consent → `ServiceCompat.startForeground()`
@@ -6,9 +6,24 @@ with `ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` → `getMediaProject
 `createVirtualDisplay()` → `ImageReader` surface. Consent acquisition stays in Activity;
 `CaptureSessionService` performs foreground promotion, projection creation, VirtualDisplay and all frame work.
 
+## Freezing the game frame from the notification (Sprint 1B)
+The ongoing capture notification carries an action (**Freeze current frame**) implemented as
+an explicit `PendingIntent.getService` back to the running service — no Activity launch, no
+consent re-request, no second projection or VirtualDisplay. The service snapshots the latest
+validated frame into an independently owned copy (`FrameSnapshots`), keeps the projection
+valid, and re-posts the notification as FROZEN with **Resume live capture**. Images arriving
+while frozen are acquired and closed but not converted or published. The freeze can equally be
+triggered from the Vision Lab button; both run `CaptureFreeze.freezeCurrentFrame()`. After an
+Android-initiated stop the pinned frame survives in process memory for editing, but not
+process death.
+
 ## Android version notes (compile/target SDK 35)
 - Android 13+ `POST_NOTIFICATIONS` may be denied; capture still proceeds with a valid ongoing
-  foreground notification that Android may hide. In-app status and Stop control remain available.
+  foreground notification that Android may hide. In-app status and Stop control remain
+  available. The **Freeze current frame** notification action is not reachable while the
+  notification is hidden, so the app checks the permission (and requests it on Android 13+)
+  and says so on the capture screen; without it, freezing is done from the Vision Lab
+  (or with the notification enabled first).
 - **Android 14+**: service calls `startForeground` with the `mediaProjection` type **before**
   `getMediaProjection()`; the consent token is single-session and dies with the service.
   `MediaProjection.Callback.onStop()` (revocation) and `onCapturedContentResize()` (rotation)
@@ -16,8 +31,10 @@ with `ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` → `getMediaProject
   `resize()` with the replacement `ImageReader` surface—no second consent prompt.
 - **Capture dimensions:** API 30+ uses `WindowManager.maximumWindowMetrics`; lower APIs retain
   the legacy `defaultDisplay.getSize()` path.
-- **Android 12+**: partial screen capture (share one app) is possible in the system dialog;
-  DraftLens requests full-screen capture; behavior is identical when partial is chosen.
+- **Android 12+**: partial screen capture (share one app) is possible in the system dialog.
+  DraftLens requests full-screen capture; choosing app-window capture for the Mobile Legends
+  workflow shows DraftLens itself, not the game — choose **Entire screen / full device
+  display**. The app tells the user this in both capture screens.
 - **minSdk 26**: `ImageReader`, `VirtualDisplay`, and foreground-service APIs used are all
   available since API 21–26; no version-branched capture code is needed.
 
@@ -39,6 +56,10 @@ termination and task removal all use the same terminate path:
 - preserve ERROR and its original message when applicable
 - release VirtualDisplay → MediaProjection → ImageReader/Surface → HandlerThread → notification
 - if no ERROR already exists, transition to IDLE
+
+Stopping does **not** clear the pinned (frozen) frame: it survives the projection session in
+process memory for editing, and only disappears with process death, an explicit Resume/Clear,
+or a new capture session.
 
 Any exception in the acquisition path is caught per frame so one bad frame never kills the session.
 

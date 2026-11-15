@@ -98,4 +98,22 @@ PASS** (device details not supplied). The MediaProjection lifecycle matrix is **
 - [x] Vision Lab card: sync, Identify, candidates, confirmed state, manual correction
 - [x] Unit coverage for catalog, cache, extraction, matching, VM flows
 - [x] CI green: 323 tests (646 executions), strict lint, assembleDebug, assembleAndroidTest compiled (run 43732908605, head e58611c; code head 7d0c903 run 43731484922)
+
+## Sprint 1B review fixes + game-frame freeze (PR #3 follow-up)
+- [x] Part A: freeze/resume from the notification through the capture architecture
+      (explicit action to the running service; independently owned snapshot; images stay
+      acquired+closed while frozen; one frozen frame; notification LIVE/FROZEN; in-app Resume;
+      full-device capture guidance; POST_NOTIFICATIONS handling)
+- [x] Part B: pixel rotation fixed to the FrameTransform convention; asymmetric non-square
+      tests with independently calculated expectations
+- [x] Part C: Android bitmap extractor validated and made pixel-exact; instrumentation tests
+      for all rotations, edge crops, mismatches, source validity and snapshot ownership
+- [x] Part D: visual-information gate (uniform/near-uniform/detail-free crops rejected);
+      distinct InsufficientVisualInformation outcome and UI state
+- [x] Part E: manual correction everywhere; failed clears reported honestly
+- [x] Part F: cache freshness (URL-bound sidecar metadata; hash/structure/decode validation;
+      URL change forces re-download; failed refresh keeps previous asset; HTTPS-only redirects)
+- [x] Part G: atomic snapshot/asset writes; failure preserves previous snapshot; temp files swept
+- [x] Part H: reference Bitmap dims read before recycling
+- [ ] CI green on the final head; instrumented job result recorded honestly
 - [ ] Physical-device smoke test and on-device accuracy evaluation (pending)
