@@ -47,6 +47,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 class VisionLabViewModelTest {
 
     @Before fun setUp() {
+        // Defensive: if a previous test's Main leaked (order-dependent), reset it first.
+        runCatching { Dispatchers.resetMain() }
         Dispatchers.setMain(UnconfinedTestDispatcher())
     }
 
