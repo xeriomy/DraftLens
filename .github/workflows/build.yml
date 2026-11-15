@@ -97,13 +97,15 @@ jobs:
         run: chmod +x ./gradlew || ls -la
 
       # The instrumented suite covers the Android bitmap extractor, the image
-      # validator and the capture manifest checks. It does not need MediaProjection:
-      # the physical capture path stays in docs/TESTING_PHYSICAL_DEVICE.md.
+      # validator and the capture manifest checks. It does not need MediaProjection.
+      # The CI runner has no KVM access, so this uses the x86_64 ATD image (fast
+      # software-bootable) with a long boot timeout.
       - name: Run instrumentation tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
-          target: default
+          target: aosp_atd
           arch: x86_64
           profile: pixel
+          emulator-boot-timeout: 900
           script: ./gradlew connectedDebugAndroidTest --stacktrace
