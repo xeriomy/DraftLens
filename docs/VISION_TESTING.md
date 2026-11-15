@@ -5,7 +5,7 @@
 GitHub Actions is the build of record for this sprint. The authoring host is aarch64 and
 AGP 8.6.1's `aapt2` is x86_64-only, so nothing that touches resources can be assembled
 there. The current, authoritative verification record for this branch is the
-**Sprint 1B review-fix pass** section below (run `43742933328`); the older Sprint 1A/1B run
+**Sprint 1B review-fix pass** section below; the older Sprint 1A/1B run
 records further down remain as history.
 
 See the sections below for the exact commands CI runs.
