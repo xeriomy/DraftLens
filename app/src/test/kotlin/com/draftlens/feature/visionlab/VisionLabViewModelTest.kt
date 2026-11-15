@@ -979,7 +979,7 @@ class VisionLabViewModelTest {
         // Sabotage the store: the directory where the document lives becomes a file,
         // so the next write cannot succeed no matter what the store recreates.
         dir.deleteRecursively()
-        java.io.File(dir).writeText("file")
+        java.io.File(dir.path).writeText("file")
         vm.confirmHero(slotId, "miya")
         eventually(5_000) { vm.uiState.value.message?.contains("could not be saved") == true }
 
@@ -1001,7 +1001,7 @@ class VisionLabViewModelTest {
 
         // Sabotage the store the same way, then try to clear.
         dir.deleteRecursively()
-        java.io.File(dir).writeText("file")
+        java.io.File(dir.path).writeText("file")
         vm.clearHeroConfirmation(slotId)
         eventually(5_000) { vm.uiState.value.message?.contains("could not be cleared") == true }
 
