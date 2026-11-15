@@ -7,6 +7,7 @@ import android.os.HandlerThread
 import android.util.Log
 import android.view.Surface
 import com.draftlens.models.CapturedFrame
+import com.draftlens.models.FrameSnapshots
 import com.draftlens.vision.model.FrameId
 import com.draftlens.vision.model.FrameOrientation
 import com.draftlens.vision.model.FrameRotation
@@ -30,6 +31,29 @@ class FramePipeline(
     private var imageReader: ImageReader? = null
     private var handlerThread: HandlerThread? = null
     private var surface: Surface? = null
+
+    /**
+     * Guards the frozen flag and the latest-frame publication as one unit, so a freeze
+     * command can never be crossed by a half-published frame. While frozen the images
+     * arriving at the ImageReader are acquired and closed (the reader stays healthy) but
+     * no conversion is performed and nothing is published.
+     */
+    private val freezeGate = Any()
+
+    @Volatile
+    private var frozen = false
+
+    /** Result of a freeze request against this pipeline. */
+    sealed interface FreezeResult {
+        /** A frame was pinned and is ready to store. */
+        data class Frozen(val frame: CapturedFrame) : FreezeResult
+
+        /** A frame is already pinned; the caller keeps the existing one. */
+        data object AlreadyFrozen : FreezeResult
+
+        /** No captured frame is available to pin yet. */
+        data object NoFrame : FreezeResult
+    }
 
     private val _latestFrame = MutableStateFlow<CapturedFrame?>(null)
     val latestFrame: StateFlow<CapturedFrame?> = _latestFrame.asStateFlow()
@@ -84,6 +108,10 @@ class FramePipeline(
                 val wallStartedAtMs = System.currentTimeMillis()
                 try {
                     if (!isActive()) return@setOnImageAvailableListener
+                    if (frozen) {
+                        // Frozen: images are acquired and closed in finally; no conversion, no retention.
+                        return@setOnImageAvailableListener
+                    }
                     val sampledAtMs = sampler.currentTimeMs()
                     if (sampler.shouldEmit(sampledAtMs)) {
                         // Reference image only to avoid leaks; copy pixels via Image plane.
@@ -93,26 +121,33 @@ class FramePipeline(
                             Log.w(TAG, "Dropped frame: RGBA_8888 payload conversion failed")
                             return@setOnImageAvailableListener
                         }
-                        sampler.markEmitted(sampledAtMs)
-                        val processingLatencyMs = System.currentTimeMillis() - wallStartedAtMs
-                        // One read per frame: both fields below see the same rotation.
-                        val frameDisplayRotation = displayRotation
-                        val visionFrame = OriginalFrame(
-                            id = FrameId.random(),
-                            payload = payload,
-                            sourceWidth = width,
-                            sourceHeight = height,
-                            displayRotation = frameDisplayRotation,
-                            // MediaProjection buffers are display-oriented; never double-rotate pixels.
-                            rotation = FrameOrientation.correctionFor(frameDisplayRotation),
-                            capturedAtElapsedRealtimeMs = sampledAtMs,
-                            wallClockTimestampMs = System.currentTimeMillis(),
-                            captureLatencyMs = processingLatencyMs
-                        )
-                        _latestFrame.value = CapturedFrame(
-                            frame = visionFrame,
-                            processingLatencyMs = processingLatencyMs
-                        )
+                        synchronized(freezeGate) {
+                            if (frozen) {
+                                // A freeze command landed during the conversion; the snapshot is authoritative.
+                                Log.d(TAG, "Dropped frame: a freeze command landed during conversion")
+                            } else {
+                                val processingLatencyMs = System.currentTimeMillis() - wallStartedAtMs
+                                // One read per frame: both fields below see the same rotation.
+                                val frameDisplayRotation = displayRotation
+                                val visionFrame = OriginalFrame(
+                                    id = FrameId.random(),
+                                    payload = payload,
+                                    sourceWidth = width,
+                                    sourceHeight = height,
+                                    displayRotation = frameDisplayRotation,
+                                    // MediaProjection buffers are display-oriented; never double-rotate pixels.
+                                    rotation = FrameOrientation.correctionFor(frameDisplayRotation),
+                                    capturedAtElapsedRealtimeMs = sampledAtMs,
+                                    wallClockTimestampMs = System.currentTimeMillis(),
+                                    captureLatencyMs = processingLatencyMs,
+                                )
+                                sampler.markEmitted(sampledAtMs)
+                                _latestFrame.value = CapturedFrame(
+                                    frame = visionFrame,
+                                    processingLatencyMs = processingLatencyMs
+                                )
+                            }
+                        }
                     }
                 } catch (e: Exception) {
                     // Never let a bad frame kill the pipeline; next frame recovers.
@@ -127,6 +162,29 @@ class FramePipeline(
     }
 
     fun surface(): Surface? = surface
+
+    /**
+     * Pins the most recently published valid frame and stops publication. Images keep being
+     * acquired and closed (the reader and VirtualDisplay stay healthy); no conversion runs
+     * until [resumeCapture]. The returned copy shares no payload buffer with the pipeline.
+     * An already-frozen pipeline keeps its existing snapshot.
+     */
+    fun freezeAndSnapshot(): FreezeResult = synchronized(freezeGate) {
+        if (frozen) return FreezeResult.AlreadyFrozen
+        val frame = _latestFrame.value ?: return FreezeResult.NoFrame
+        val copy = FrameSnapshots.copyOf(frame) ?: return FreezeResult.NoFrame
+        frozen = true
+        FreezeResult.Frozen(copy)
+    }
+
+    /** Resumes live publication. No projection or display is recreated. */
+    fun resumeCapture() {
+        synchronized(freezeGate) { frozen = false }
+        sampler.reset()
+    }
+
+    /** True while the pipeline is frozen; images flow but nothing is published. */
+    val isFrozen: Boolean get() = synchronized(freezeGate) { frozen }
 
     private fun imageToPayload(
         image: android.media.Image,

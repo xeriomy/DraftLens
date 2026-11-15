@@ -56,6 +56,7 @@ class CaptureSessionService : Service() {
     private var displayListener: DisplayManager.DisplayListener? = null
     private var captureJob: Job? = null
     private var frameJob: Job? = null
+    private var frozenJob: Job? = null
     private var foregroundPromoted = false
 
     private val projectionCallback = object : MediaProjection.Callback() {
@@ -129,6 +130,32 @@ class CaptureSessionService : Service() {
                 CaptureStateHolder.setPaused(false)
                 START_NOT_STICKY
             }
+            ACTION_FREEZE -> {
+                // Never re-promotes, never restarts MediaProjection: no-op without an active pipeline.
+                when (val outcome = CaptureFreeze.freezeCurrentFrame()) {
+                    is FreezeOutcome.Frozen ->
+                        Log.i(TAG, "Freeze command honoured (${outcome.frame.width}x${outcome.frame.height})")
+                    FreezeOutcome.AlreadyFrozen ->
+                        Log.i(TAG, "Freeze command: a frame is already frozen; keeping it")
+                    FreezeOutcome.NoFrame ->
+                        Log.i(TAG, "Freeze command ignored: no frame captured yet")
+                    FreezeOutcome.NoPipeline -> {
+                        Log.i(TAG, "Freeze command ignored: no active capture session")
+                        stopSelf() // do not linger for a stale command
+                        return START_NOT_STICKY
+                    }
+                }
+                START_NOT_STICKY
+            }
+            ACTION_RESUME_LIVE -> {
+                CaptureFreeze.resumeLive()
+                if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING &&
+                    CaptureStateHolder.state.value.status != CaptureStatus.PAUSED
+                ) {
+                    stopSelf() // stale action after capture stopped; nothing to resume into
+                }
+                START_NOT_STICKY
+            }
             else -> START_NOT_STICKY
         }
     }
@@ -166,6 +193,7 @@ class CaptureSessionService : Service() {
                         val displayRotation = currentDisplayRotation()
 
                         pipeline.start(captureWidth, captureHeight, dpi, displayRotation)
+                        CaptureFreeze.attachPipeline(pipeline)
                         createVirtualDisplay(proj, captureWidth, captureHeight, dpi)
                         registerDisplayListener()
                         CaptureStateHolder.beginCapture(captureWidth, captureHeight, dpi)
@@ -258,6 +286,12 @@ class CaptureSessionService : Service() {
                 if (frame != null && CaptureStateHolder.state.value.status == CaptureStatus.CAPTURING) {
                     CaptureStateHolder.recordFrame(frame)
                 }
+            }
+        }
+        frozenJob?.cancel()
+        frozenJob = scope.launch {
+            CaptureStateHolder.frozenFrame.collectLatest { frozen ->
+                updateNotificationState(frozen != null)
             }
         }
     }
@@ -386,6 +420,8 @@ class CaptureSessionService : Service() {
         captureJob = null
         frameJob?.cancel()
         frameJob = null
+        frozenJob?.cancel()
+        frozenJob = null
         try { virtualDisplay?.release() } catch (e: Exception) { Log.w(TAG, "VirtualDisplay release failed", e) }
         virtualDisplay = null
         unregisterDisplayListener()
@@ -396,6 +432,9 @@ class CaptureSessionService : Service() {
             Log.w(TAG, "MediaProjection stop failed", e)
         }
         projection = null
+        if (::pipeline.isInitialized) {
+            CaptureFreeze.detachPipeline(pipeline)
+        }
         try { pipeline.stop() } catch (e: Exception) { Log.w(TAG, "Pipeline stop failed", e) }
         if (releaseForeground) {
             try {
@@ -442,7 +481,31 @@ class CaptureSessionService : Service() {
             .createNotificationChannel(channel)
     }
 
-    private fun buildNotification(): Notification {
+    /** Re-posts the ongoing notification with the current LIVE/FROZEN state and its action. */
+    private fun updateNotificationState(frozen: Boolean) {
+        if (!foregroundPromoted) {
+            Log.d(TAG, "Skipping notification update: service is not promoted")
+            return
+        }
+        if (!areNotificationsEnabled()) {
+            Log.w(TAG, "Notifications are disabled; the capture actions are not reachable from the shade")
+            return
+        }
+        try {
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .notify(NOTIFICATION_ID, buildNotification(frozen))
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to update the capture notification", e)
+        }
+    }
+
+    /** Android 13+ runtime-granted; API 24+ areNotificationsEnabled when present, safe otherwise. */
+    private fun areNotificationsEnabled(): Boolean = runCatching {
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+            .areNotificationsEnabled()
+    }.getOrDefault(true)
+
+    private fun buildNotification(frozen: Boolean = CaptureStateHolder.frozenFrame.value != null): Notification {
         val tapIntent = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java),
@@ -453,13 +516,33 @@ class CaptureSessionService : Service() {
             Intent(this, CaptureSessionService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val freezeIntent = PendingIntent.getService(
+            this, 2,
+            Intent(this, CaptureSessionService::class.java).setAction(ACTION_FREEZE),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val resumeCaptureIntent = PendingIntent.getService(
+            this, 3,
+            Intent(this, CaptureSessionService::class.java).setAction(ACTION_RESUME_LIVE),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val subText = if (frozen) getString(R.string.capture_frozen_subtext) else getString(R.string.capture_live_subtext)
+        val text = if (frozen) getString(R.string.capture_notification_frozen_text) else getString(R.string.capture_notification_text)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.capture_notification_title))
-            .setContentText(getString(R.string.capture_notification_text))
+            .setContentText(text)
+            .setSubText(subText)
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setContentIntent(tapIntent)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.capture_stop_action), stopIntent)
             .setOngoing(true)
+            .setShowWhen(false)
+        if (frozen) {
+            builder.addAction(android.R.drawable.ic_media_play, getString(R.string.capture_resume_capture_action), resumeCaptureIntent)
+        } else {
+            builder.addAction(android.R.drawable.ic_menu_camera, getString(R.string.capture_freeze_action), freezeIntent)
+        }
+        return builder
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.capture_stop_action), stopIntent)
             .build()
     }
 
@@ -468,6 +551,8 @@ class CaptureSessionService : Service() {
         const val ACTION_STOP = "com.draftlens.action.STOP_CAPTURE"
         const val ACTION_PAUSE = "com.draftlens.action.PAUSE_CAPTURE"
         const val ACTION_RESUME = "com.draftlens.action.RESUME_CAPTURE"
+        const val ACTION_FREEZE = "com.draftlens.action.FREEZE_CAPTURE"
+        const val ACTION_RESUME_LIVE = "com.draftlens.action.RESUME_LIVE_CAPTURE"
         const val EXTRA_RESULT_CODE = "extra_result_code"
         const val EXTRA_DATA = "extra_data"
         const val EXTRA_INTERVAL_MS = "extra_interval_ms"

@@ -6,21 +6,18 @@ import com.draftlens.vision.heroes.HeroCatalogState
 import com.draftlens.vision.heroes.HeroHttpResponse
 import com.draftlens.vision.heroes.HeroHttpResult
 import com.draftlens.vision.heroes.HeroId
+import com.draftlens.vision.testRealPng
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
 
-private const val PNG_MAGIC = 0x89.toByte()
-
-private fun fakePng(): ByteArray {
-    val header = byteArrayOf(PNG_MAGIC, 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A)
-    return header + ByteArray(64) { 0x01 }
-}
+private fun fakePng(): ByteArray = testRealPng()
 
 private fun listRoute(): String = "https://arena.fastapicloud.dev/api/heroes?size=100&index=1&lang=en"
 
@@ -159,5 +156,197 @@ class FileHeroCatalogRepositoryTest {
 
         assertTrue(repo.state.value is HeroCatalogState.Error)
         assertNull(repo.snapshot())
+    }
+
+    private class CountingTransport(
+        var routes: Map<String, HeroHttpResult>,
+    ) : com.draftlens.vision.heroes.HeroCatalogTransport {
+        val requested = mutableListOf<String>()
+        override fun get(url: String, maxBytes: Long, accept: String?): HeroHttpResult {
+            requested += url
+            return routes[url] ?: HeroHttpResult.Failure("no route for $url", 404)
+        }
+    }
+
+    private fun greenPng(): ByteArray = com.draftlens.vision.testRealGreenPng()
+
+    private fun listBodyWithHeads(miya: String, layla: String): String = """
+        {"code":0,"message":"OK","data":{"records":[
+          {"data":{"hero":{"data":{"head":"$miya","name":"Miya","smallmap":"https://wsrv.nl/?url=miya.map"}},"hero_id":1}},
+          {"data":{"hero":{"data":{"head":"$layla","name":"Layla","smallmap":"https://wsrv.nl/?url=layla.map"}},"hero_id":2}}
+        ],"total":2}}
+    """.trimIndent()
+
+    @Test fun `an unchanged catalog does not re-download a valid cached asset`() = runBlocking {
+        val (data, cache) = tempDirs()
+        val transport = CountingTransport(syncRoutes())
+        val repo = FileHeroCatalogRepository(data, cache, transport) { 1234L }
+        repo.refresh()
+        val downloadsAfterFirstSync = transport.requested.count { it.contains(".head") }
+        assertEquals(2, downloadsAfterFirstSync)
+
+        repo.refresh()
+
+        assertEquals(2, transport.requested.count { it.contains(".head") })
+    }
+
+    @Test fun `a changed asset url forces a re-download and the new asset is served`() = runBlocking {
+        val (data, cache) = tempDirs()
+        val transport = CountingTransport(syncRoutes())
+        val repo = FileHeroCatalogRepository(data, cache, transport) { 1234L }
+        repo.refresh()
+
+        transport.routes = mapOf(
+            listRoute() to HeroHttpResult.Success(HeroHttpResponse(
+                listBodyWithHeads("https://wsrv.nl/?url=miya2.head", "https://wsrv.nl/?url=layla2.head").toByteArray(),
+                "application/json",
+            )),
+            "https://wsrv.nl/?url=miya2.head" to HeroHttpResult.Success(HeroHttpResponse(greenPng(), "image/png")),
+            "https://wsrv.nl/?url=layla2.head" to HeroHttpResult.Success(HeroHttpResponse(greenPng(), "image/png")),
+            "https://mlbbdex.com/api/v1/heroes" to HeroHttpResult.Failure("offline", 503),
+        )
+        val result = repo.refresh()
+
+        assertTrue(result.isSuccess)
+        assertTrue(transport.requested.contains("https://wsrv.nl/?url=miya2.head"))
+        assertEquals(
+            greenPng().toList(),
+            repo.assetFile(HeroId("miya"), HeroAssetVariant.HEAD)!!.readBytes().toList(),
+        )
+    }
+
+    @Test fun `an asset with a changed url is not served from the old cache when the refresh fails`() = runBlocking {
+        val (data, cache) = tempDirs()
+        val transport = CountingTransport(syncRoutes())
+        val repo = FileHeroCatalogRepository(data, cache, transport) { 1234L }
+        repo.refresh()
+
+        transport.routes = mapOf(
+            listRoute() to HeroHttpResult.Success(HeroHttpResponse(
+                listBodyWithHeads("https://wsrv.nl/?url=miya2.head", "https://wsrv.nl/?url=layla2.head").toByteArray(),
+                "application/json",
+            )),
+            // No route for miya2.head: its download fails. Layla still refreshes fine.
+            "https://wsrv.nl/?url=layla2.head" to HeroHttpResult.Success(HeroHttpResponse(greenPng(), "image/png")),
+            "https://mlbbdex.com/api/v1/heroes" to HeroHttpResult.Failure("offline", 503),
+        )
+        val result = repo.refresh()
+
+        assertTrue(result.isSuccess)
+        assertTrue(result.getOrThrow().assetFailures.contains("Miya"))
+        // The previous asset must not be exposed under the changed URL.
+        assertNull(repo.assetFile(HeroId("miya"), HeroAssetVariant.HEAD))
+    }
+
+    @Test fun `a valid cached asset is still served when the network dies and the url is unchanged`() = runBlocking {
+        val (data, cache) = tempDirs()
+        val transport = CountingTransport(syncRoutes())
+        val repo = FileHeroCatalogRepository(data, cache, transport) { 1234L }
+        repo.refresh()
+
+        transport.routes = emptyMap()
+        assertTrue(repo.refresh().isFailure)
+
+        assertNotNull(repo.assetFile(HeroId("miya"), HeroAssetVariant.HEAD))
+    }
+
+    @Test fun `a corrupted cached asset is not served`() = runBlocking {
+        val (data, cache) = tempDirs()
+        val repo = FileHeroCatalogRepository(data, cache, CountingTransport(syncRoutes())) { 1234L }
+        repo.refresh()
+        val file = File(cache, "hero-assets/miya-head.img")
+        file.writeBytes("tampered".toByteArray())
+
+        assertNull(repo.assetFile(HeroId("miya"), HeroAssetVariant.HEAD))
+    }
+
+    @Test fun `a forged url binding in the metadata blocks the asset`() = runBlocking {
+        val (data, cache) = tempDirs()
+        val repo = FileHeroCatalogRepository(data, cache, CountingTransport(syncRoutes())) { 1234L }
+        repo.refresh()
+        val meta = File(cache, "hero-assets/miya-head.img.meta")
+        meta.writeText(meta.readText().replace("miya.head", "attacker.head"))
+
+        assertNull(repo.assetFile(HeroId("miya"), HeroAssetVariant.HEAD))
+    }
+
+    @Test fun `a corrupt cache is re-downloaded on refresh`() = runBlocking {
+        val (data, cache) = tempDirs()
+        val transport = CountingTransport(syncRoutes())
+        val repo = FileHeroCatalogRepository(data, cache, transport) { 1234L }
+        repo.refresh()
+        val file = File(cache, "hero-assets/miya-head.img")
+        file.writeBytes("tampered".toByteArray())
+
+        repo.refresh()
+
+        assertEquals(fakePng().toList(), file.readBytes().toList())
+        assertEquals(2, transport.requested.count { it == "https://wsrv.nl/?url=miya.head" })
+    }
+
+    @Test fun `a missing metadata sidecar forces a re-download`() = runBlocking {
+        val (data, cache) = tempDirs()
+        val transport = CountingTransport(syncRoutes())
+        val repo = FileHeroCatalogRepository(data, cache, transport) { 1234L }
+        repo.refresh()
+        assertTrue(File(cache, "hero-assets/miya-head.img.meta").delete())
+
+        repo.refresh()
+
+        assertEquals(2, transport.requested.count { it == "https://wsrv.nl/?url=miya.head" })
+    }
+
+    @Test fun `an oversized cached asset is rejected at serve time`() = runBlocking {
+        val (data, cache) = tempDirs()
+        val repo = FileHeroCatalogRepository(data, cache, CountingTransport(syncRoutes())) { 1234L }
+        repo.refresh()
+        val file = File(cache, "hero-assets/miya-head.img")
+        file.writeBytes(fakePng() + ByteArray(5 * 1024 * 1024))
+
+        assertNull(repo.assetFile(HeroId("miya"), HeroAssetVariant.HEAD))
+    }
+
+    @Test fun `a truncated png is rejected at download time`() = runBlocking {
+        val (data, cache) = tempDirs()
+        val truncated = fakePng().copyOf(30)
+        val repo = FileHeroCatalogRepository(
+            data, cache, CountingTransport(syncRoutes(pngBytes = truncated)),
+        ) { 1234L }
+
+        val result = repo.refresh()
+
+        assertTrue(result.isSuccess)
+        assertEquals(listOf("Miya", "Layla"), result.getOrThrow().assetFailures)
+        assertNull(repo.assetFile(HeroId("miya"), HeroAssetVariant.HEAD))
+    }
+
+    @Test fun `an html error page with a png signature is rejected`() = runBlocking {
+        val (data, cache) = tempDirs()
+        val html = byteArrayOf(
+            0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(),
+            0x0D, 0x0A, 0x1A, 0x0A,
+        ) + "<html>not an image</html>".toByteArray()
+        val repo = FileHeroCatalogRepository(
+            data, cache, CountingTransport(syncRoutes(pngBytes = html)),
+        ) { 1234L }
+
+        val result = repo.refresh()
+
+        assertTrue(result.isSuccess)
+        assertEquals(listOf("Miya", "Layla"), result.getOrThrow().assetFailures)
+        assertNull(repo.assetFile(HeroId("miya"), HeroAssetVariant.HEAD))
+    }
+
+    @Test fun `a missing content type is accepted`() = runBlocking {
+        val (data, cache) = tempDirs()
+        val repo = FileHeroCatalogRepository(
+            data, cache, CountingTransport(syncRoutes(contentType = null)),
+        ) { 1234L }
+
+        val result = repo.refresh()
+
+        assertTrue(result.isSuccess)
+        assertTrue(result.getOrThrow().assetFailures.isEmpty())
+        assertNotNull(repo.assetFile(HeroId("miya"), HeroAssetVariant.HEAD))
     }
 }

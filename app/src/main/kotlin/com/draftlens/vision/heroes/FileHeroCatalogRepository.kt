@@ -3,18 +3,36 @@ package com.draftlens.vision.heroes
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.FileOutputStream
+import java.security.MessageDigest
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /**
- * File-based catalog: one atomic snapshot JSON plus one file per reference image.
- * Writes go to a `.tmp` sibling first and are renamed into place, so an interrupted
- * sync never leaves a half-read snapshot behind.
+ * File-based hero catalog: one snapshot JSON plus one file per reference image and a small
+ * metadata sidecar per image (`*.meta`) binding it to its source URL and content hash.
+ *
+ * Guarantees:
+ * - Snapshot writes are temp-file-then-atomic-move into place; an interrupted write never
+ *   leaves a half-read or truncated snapshot, and a failed write leaves the previous
+ *   snapshot untouched (there is no direct-write fallback).
+ * - A cached asset is reused only when it passes full validation: present, within the
+ *   4 MiB cap, matching sidecar (URL, size, SHA-256), magic bytes and a container
+ *   structure check (plus an actual decode on Android, see `DraftLensApp`). Corrupt or
+ *   stale files are never served; a changed source URL forces a re-download.
+ * - Refresh keeps the previous valid asset when the download fails; nothing is deleted
+ *   on failure paths, and a stale asset is never exposed under a changed URL.
+ * - Temp files are created as siblings of the target and swept after an hour on init.
  */
 class FileHeroCatalogRepository(
     private val dataDir: File,
     private val cacheDir: File,
     private val transport: HeroCatalogTransport,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val imageValidator: ReferenceImageValidator = StructuralImageValidator,
 ) : HeroCatalogRepository {
 
     private val snapshotFile = File(dataDir, "hero-catalog/catalog.json")
@@ -27,6 +45,8 @@ class FileHeroCatalogRepository(
     override val state: StateFlow<HeroCatalogState> = _state.asStateFlow()
 
     init {
+        sweepStaleTempFiles(snapshotFile.parentFile)
+        sweepStaleTempFiles(assetsDir)
         // If the cache cannot be decoded this records an Error state and returns null.
         cached = readDiskSnapshot()
         cached?.let { _state.value = HeroCatalogState.Ready(it.entries.size, it.syncedAtMs) }
@@ -72,7 +92,8 @@ class FileHeroCatalogRepository(
 
     override fun assetFile(id: HeroId, variant: HeroAssetVariant): File? {
         val file = assetFileFor(id, variant)
-        return file.takeIf { it.exists() && it.length() > 0L }
+        val expectedUrl = currentAssetUrl(id, variant) ?: return null
+        return file.takeIf { isAssetFresh(it, expectedUrl) }
     }
 
     // region internals
@@ -80,34 +101,93 @@ class FileHeroCatalogRepository(
     private fun assetFileFor(id: HeroId, variant: HeroAssetVariant): File =
         File(assetsDir, "${id.value}-${variant.name.lowercase()}.img")
 
+    private fun metaFileFor(assetFile: File): File = File(assetsDir, "${assetFile.name}.meta")
+
+    /** The URL the current catalog advertises for this asset; null when unknown. */
+    private fun currentAssetUrl(id: HeroId, variant: HeroAssetVariant): String? =
+        (cached ?: snapshot())
+            ?.entries?.firstOrNull { it.id == id }
+            ?.assets?.firstOrNull { it.variant == variant }
+            ?.url
+
+    /**
+     * Full serve-time validation of an existing cache entry against [expectedUrl].
+     * A file that fails anything here is invisible to the rest of the app.
+     */
+    private fun isAssetFresh(file: File, expectedUrl: String): Boolean {
+        if (!file.isFile) return false
+        val length = file.length()
+        if (length == 0L || length > MAX_IMAGE_BYTES) return false
+        val meta = readMeta(metaFileFor(file)) ?: return false
+        if (meta.url != expectedUrl) return false
+        if (meta.bytes != length) return false
+        if (meta.contentType != null && !meta.contentType.startsWith("image/")) return false
+        val bytes = runCatching { file.readBytes() }.getOrNull() ?: return false
+        if (sha256Hex(bytes) != meta.sha256) return false
+        if (!looksLikeImage(bytes)) return false
+        return imageValidator.isDecodable(bytes)
+    }
+
     /** Returns the names of heroes whose images failed to download or validate. */
     private fun downloadAssets(entries: List<HeroCatalogEntry>): List<String> {
         val failures = mutableListOf<String>()
         for (entry in entries) {
             val asset = entry.assets.firstOrNull { it.variant == HeroAssetVariant.HEAD } ?: continue
             val target = assetFileFor(entry.id, HeroAssetVariant.HEAD)
-            if (target.exists() && target.length() > 0L) continue // keep the cache; refresh is about the catalog
-            val ok = downloadAsset(asset, target)
-            if (!ok) {
-                runCatching { target.delete() }
+            // Unchanged URL and a valid file: keep the cache untouched.
+            if (isAssetFresh(target, asset.url)) continue
+            // Changed URL or corrupt cache: re-download. A failure keeps the on-disk files
+            // untouched; they are served only if they pass validation for the *current* URL.
+            if (!refreshAsset(asset, target)) {
                 failures += entry.canonicalName
             }
         }
         return failures
     }
 
-    /** HTTPS + image content check via magic bytes, with a size cap enforced by the transport. */
-    private fun downloadAsset(asset: HeroAsset, target: File): Boolean {
+    /**
+     * Fetches and fully validates the image, then atomically replaces the sidecar metadata
+     * before the image itself. A stale metadata sidecar never matches a fresh image and
+     * vice versa, so a crash or failure in between leaves the entry unserved and
+     * self-healing on the next refresh. The previous image is only ever replaced by a
+     * fully validated download.
+     */
+    private fun refreshAsset(asset: HeroAsset, target: File): Boolean {
+        val downloaded = fetchAsset(asset) ?: return false
+        val meta = HeroAssetMeta(
+            url = asset.url,
+            sha256 = sha256Hex(downloaded.bytes),
+            bytes = downloaded.bytes.size.toLong(),
+            contentType = downloaded.contentType,
+            savedAtMs = clock(),
+        )
+        val metaBytes = Json { encodeDefaults = true }
+            .encodeToString(HeroAssetMeta.serializer(), meta)
+            .toByteArray(Charsets.UTF_8)
+        if (!writeAtomically(metaFileFor(target), metaBytes)) return false
+        if (!writeAtomically(target, downloaded.bytes)) {
+            // The metadata now describes an image that was not written; drop it so the
+            // previous pair is not shadowed by a mismatch that never heals.
+            runCatching { metaFileFor(target).delete() }
+            return false
+        }
+        return true
+    }
+
+    /** HTTPS + cap + content type + magic bytes + container validation. */
+    private fun fetchAsset(asset: HeroAsset): DownloadedAsset? {
+        if (!asset.url.startsWith("https://")) return null
         val response = when (val result = transport.get(asset.url, MAX_IMAGE_BYTES, null)) {
             is HeroHttpResult.Success -> result.response
-            is HeroHttpResult.Failure -> return false
+            is HeroHttpResult.Failure -> return null
         }
-        if (asset.url.startsWith("https://").not()) return false
-        if (response.bytes.size > MAX_IMAGE_BYTES) return false
+        if (response.bytes.size > MAX_IMAGE_BYTES) return null
         val contentType = response.contentType?.lowercase()
-        if (contentType != null && !contentType.startsWith("image/")) return false
-        if (!looksLikeImage(response.bytes)) return false
-        return writeAtomically(target, response.bytes)
+        if (contentType != null && !contentType.startsWith("image/")) return null
+        val bytes = response.bytes
+        if (!looksLikeImage(bytes)) return null
+        if (!imageValidator.isDecodable(bytes)) return null
+        return DownloadedAsset(bytes, contentType)
     }
 
     private fun looksLikeImage(bytes: ByteArray): Boolean {
@@ -137,22 +217,78 @@ class FileHeroCatalogRepository(
         }
     }
 
-    private fun writeAtomically(target: File, bytes: ByteArray): Boolean = runCatching {
+    private fun readMeta(file: File): HeroAssetMeta? = try {
+        Json { ignoreUnknownKeys = true }.decodeFromString(HeroAssetMeta.serializer(), file.readText())
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun sha256Hex(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString(separator = "") { "%02x".format(it) }
+
+    /**
+     * Writes [bytes] to [target] by writing a sibling temp file in the same directory
+     * (same filesystem), flushing and syncing it, then atomically moving it into place.
+     * If the atomic move cannot be completed, the previous [target] is preserved and the
+     * temp file is deleted. Never writes directly to [target].
+     */
+    internal fun writeAtomically(target: File, bytes: ByteArray): Boolean {
         val parent = target.parentFile ?: return false
-        parent.mkdirs()
-        val tmp = File(parent, "${target.name}.tmp")
-        tmp.writeBytes(bytes)
-        if (!tmp.renameTo(target)) {
-            // renameTo can fail across file systems; fall back to a copy+delete.
-            target.writeBytes(bytes)
-            tmp.delete()
+        if (!parent.exists() && !parent.mkdirs()) return false
+        val tmp = try {
+            File.createTempFile("${target.name}.", ".tmp", parent)
+        } catch (e: Exception) {
+            return false
         }
-        true
-    }.getOrDefault(false)
+        return try {
+            FileOutputStream(tmp).use { out ->
+                out.write(bytes)
+                out.flush()
+                // Best effort on filesystems that support it; close is the correctness floor.
+                runCatching { out.fd.sync() }
+            }
+            Files.move(
+                tmp.toPath(),
+                target.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+            true
+        } catch (e: Exception) {
+            // Atomic replacement was not possible: keep the previous target untouched.
+            runCatching { tmp.delete() }
+            false
+        }
+    }
+
+    /** Removes abandoned `*.tmp` siblings older than an hour; never touches other files. */
+    private fun sweepStaleTempFiles(dir: File?) {
+        if (dir == null) return
+        runCatching {
+            val cutoff = clock() - TEMP_SWEEP_AGE_MS
+            dir.listFiles { file -> file.isFile && file.name.endsWith(".tmp") }?.forEach { file ->
+                if (file.lastModified() < cutoff) file.delete()
+            }
+        }
+    }
 
     // endregion
 
     private companion object {
         const val MAX_IMAGE_BYTES = 4L * 1024L * 1024L // 4 MiB per reference image
+        const val TEMP_SWEEP_AGE_MS = 60L * 60L * 1000L // sweep abandoned temp siblings hourly
     }
 }
+
+/** Sidecar binding one cached reference image to its source and content. */
+@Serializable
+internal data class HeroAssetMeta(
+    val url: String,
+    val sha256: String,
+    val bytes: Long,
+    val contentType: String? = null,
+    val savedAtMs: Long,
+)
+
+private data class DownloadedAsset(val bytes: ByteArray, val contentType: String?)

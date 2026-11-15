@@ -94,6 +94,29 @@ class CaptureVisionFrameSourceTest {
         assertNull(cleared)
     }
 
+    @Test fun `adapter exposes the capture-side frozen frame`() {
+        val frames = MutableStateFlow<CapturedFrame?>(testCapturedFrame())
+        val capture = MutableStateFlow(CaptureSessionState(status = CaptureStatus.CAPTURING))
+        val frozen = MutableStateFlow<CapturedFrame?>(null)
+        val adapter = CaptureVisionFrameSource(frames, capture, scope, frozen)
+
+        frozen.value = testCapturedFrame()
+
+        val delivered = runBlocking {
+            withTimeout(AWAIT_TIMEOUT_MS) { adapter.frozenFrame.first { it != null } }
+        }
+        assertEquals("test-frame", delivered.id.value)
+    }
+
+    @Test fun `freezing without an active capture reports false and resume is safe`() {
+        CaptureStateHolder.reset()
+        val adapter = harness().adapter
+
+        assertEquals(false, adapter.freeze())
+        adapter.resume()
+        assertNull(adapter.frozenFrame.value)
+    }
+
     private companion object {
         const val AWAIT_TIMEOUT_MS = 5_000L
     }

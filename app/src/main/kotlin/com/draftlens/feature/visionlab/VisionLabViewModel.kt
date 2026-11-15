@@ -72,6 +72,11 @@ class VisionLabViewModel(
             source.frames.collect { frame -> _uiState.update { it.copy(liveFrame = frame) } }
         }
         viewModelScope.launch {
+            // The pinned frame comes from the capture side (notification or in-app command);
+            // newer live frames can never replace it here.
+            source.frozenFrame.collect { frame -> _uiState.update { it.copy(frozenFrame = frame) } }
+        }
+        viewModelScope.launch {
             source.state.collect { state -> _uiState.update { it.copy(sourceState = state) } }
         }
         viewModelScope.launch {
@@ -106,15 +111,20 @@ class VisionLabViewModel(
 
     // region frame control
 
-    /** Pins the frame that is on screen; live frames keep arriving but are not shown. */
+    /**
+     * Pins the newest valid frame through the capture side (same command the notification
+     * runs). The pinned frame is independently owned and shown until [resume]/[clear].
+     * Idempotent: an already-pinned frame is kept.
+     */
     fun freeze() {
-        val frame = source.frames.value ?: return
-        _uiState.update { it.copy(frozenFrame = frame) }
+        if (!source.freeze()) {
+            report("No captured frame to freeze yet. Start capture and wait for a frame.")
+        }
     }
 
     /** Releases the pinned frame and shows live frames again. */
     fun resume() {
-        _uiState.update { it.copy(frozenFrame = null) }
+        source.resume()
     }
 
     /**
@@ -125,6 +135,7 @@ class VisionLabViewModel(
         generation.incrementAndGet()
         processingJob?.cancel()
         processingJob = null
+        source.resume()
         _uiState.update {
             it.copy(frozenFrame = null, processed = null, processStatus = ProcessStatus.IDLE, processError = null)
         }
@@ -433,6 +444,10 @@ class VisionLabViewModel(
                         com.draftlens.feature.visionlab.HeroSlotUiState(HeroSlotPhase.NO_MATCH, bestSimilarity = outcome.bestSimilarity)
                     }
 
+                    is com.draftlens.vision.heroes.HeroIdentifyOutcome.InsufficientVisualInformation -> updateHeroSlot(slot.id) {
+                        com.draftlens.feature.visionlab.HeroSlotUiState(HeroSlotPhase.INSUFFICIENT_INFO, message = outcome.reason)
+                    }
+
                     is com.draftlens.vision.heroes.HeroIdentifyOutcome.Failed -> updateHeroSlot(slot.id) {
                         com.draftlens.feature.visionlab.HeroSlotUiState(HeroSlotPhase.FAILED, message = outcome.message)
                     }
@@ -475,7 +490,11 @@ class VisionLabViewModel(
     /** Removes a confirmed hero so the slot can be identified again. */
     fun clearHeroConfirmation(slotId: String) {
         viewModelScope.launch {
-            runCatching { heroRecognitionStore.clear(slotId) }
+            val result = runCatching { heroRecognitionStore.clear(slotId) }
+            if (result.isFailure) {
+                report("The hero confirmation could not be cleared: ${result.exceptionOrNull()?.message}")
+                return@launch
+            }
             _uiState.update {
                 it.copy(heroRecognition = it.heroRecognition - slotId, heroPreview = null)
             }

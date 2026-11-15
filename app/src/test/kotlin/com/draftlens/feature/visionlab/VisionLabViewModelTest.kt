@@ -53,9 +53,26 @@ class VisionLabViewModelTest {
         override val frames: StateFlow<OriginalFrame?> = _frames.asStateFlow()
         private val _state = MutableStateFlow(VisionSourceState.CAPTURING)
         override val state: StateFlow<VisionSourceState> = _state.asStateFlow()
+        private val _frozenFrame = MutableStateFlow<OriginalFrame?>(null)
+        override val frozenFrame: StateFlow<OriginalFrame?> = _frozenFrame.asStateFlow()
 
         fun emit(frame: OriginalFrame?) {
             _frames.value = frame
+        }
+
+        /** Simulates a capture-side freeze command (e.g. from the notification). */
+        fun emitFrozen(frame: OriginalFrame?) {
+            _frozenFrame.value = frame
+        }
+
+        override fun freeze(): Boolean {
+            val frame = _frames.value ?: return false
+            _frozenFrame.value = frame
+            return true
+        }
+
+        override fun resume() {
+            _frozenFrame.value = null
         }
     }
 
@@ -137,9 +154,9 @@ class VisionLabViewModelTest {
 
     // endregion
 
-    private fun originalFrame(id: String, width: Int = 4, height: Int = 2) = OriginalFrame(
+    private fun originalFrame(id: String, width: Int = 16, height: Int = 16) = OriginalFrame(
         id = FrameId(id),
-        payload = PixelArrayFramePayload(width, height, IntArray(width * height) { it }),
+        payload = PixelArrayFramePayload(width, height, IntArray(width * height) { (it * 137) % 251 }),
         sourceWidth = width,
         sourceHeight = height,
         displayRotation = FrameRotation.ROTATION_0,
@@ -509,6 +526,45 @@ class VisionLabViewModelTest {
         assertEquals("first", vm.uiState.value.displayFrame?.id?.value)
     }
 
+    @Test fun `a capture-side freeze pins the frame while live frames keep arriving`() = runBlocking {
+        val source = FakeVisionFrameSource(originalFrame("game"))
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
+
+        // Simulates the notification action: the capture side pins the latest game frame.
+        source.emitFrozen(originalFrame("game"))
+        // Newer frames (the DraftLens UI itself) must never replace the pinned frame.
+        source.emit(originalFrame("draftlens-self"))
+
+        assertEquals("game", vm.uiState.value.frozenFrame?.id?.value)
+        assertEquals("game", vm.uiState.value.displayFrame?.id?.value)
+        assertEquals("draftlens-self", vm.uiState.value.liveFrame?.id?.value)
+        assertTrue(vm.uiState.value.isFrozen)
+    }
+
+    @Test fun `resume from the ui reveals live frames again after a capture-side freeze`() = runBlocking {
+        val source = FakeVisionFrameSource(originalFrame("game"))
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
+
+        source.emitFrozen(originalFrame("game"))
+        source.emit(originalFrame("new-live"))
+
+        vm.resume()
+
+        withTimeout(10_000) { vm.uiState.first { it.frozenFrame == null } }
+        assertEquals("new-live", vm.uiState.value.displayFrame?.id?.value)
+        assertFalse(vm.uiState.value.isFrozen)
+    }
+
+    @Test fun `freeze without a captured frame reports a message instead of pinning nothing`() = runBlocking {
+        val source = FakeVisionFrameSource(null)
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
+
+        vm.freeze()
+
+        assertNull(vm.uiState.value.frozenFrame)
+        assertTrue(vm.uiState.value.message!!.contains("No captured frame"))
+    }
+
     @Test fun `clear releases the pinned frame and the processed frame`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame("first"))
         val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
@@ -721,8 +777,7 @@ class VisionLabViewModelTest {
             routes[url] ?: com.draftlens.vision.heroes.HeroHttpResult.Failure("no route", 404)
     }
 
-    private val fakePng = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(),
-        0x0D, 0x0A, 0x1A, 0x0A) + ByteArray(64) { 0x01 }
+    private val fakePng = com.draftlens.vision.testRealPng()
 
     private fun gradient(size: Int = 32): IntArray =
         IntArray(size * size) { i ->
@@ -749,19 +804,35 @@ class VisionLabViewModelTest {
             com.draftlens.vision.heroes.HeroHttpResult.Failure("offline", 503),
     )
 
-    private fun recognitionVm(referencePixels: IntArray = gradient()): VisionLabViewModel {
+    private fun recognitionVm(
+        frame: OriginalFrame? = null,
+        referencePixels: IntArray = gradient(16),
+        recognitionStore: com.draftlens.datastore.HeroRecognitionStore = heroStore(),
+    ): VisionLabViewModel {
         val repo = com.draftlens.vision.heroes.FileHeroCatalogRepository(
             java.nio.file.Files.createTempDirectory("hero-catalog").toFile(),
             java.nio.file.Files.createTempDirectory("hero-assets").toFile(),
             RoutesTransport(happyRoutes()),
         )
+        // A textured frame matching the injected reference, so matching is deterministic.
+        val actualFrame = frame ?: OriginalFrame(
+            id = FrameId("live"),
+            payload = PixelArrayFramePayload(16, 16, gradient(16)),
+            sourceWidth = 16,
+            sourceHeight = 16,
+            displayRotation = FrameRotation.ROTATION_0,
+            rotation = FrameRotation.ROTATION_0,
+            capturedAtElapsedRealtimeMs = 10_000,
+            wallClockTimestampMs = 1_700_000_000_000,
+            captureLatencyMs = 4,
+        )
         return VisionLabViewModel(
-            FakeVisionFrameSource(originalFrame("live")),
+            FakeVisionFrameSource(actualFrame),
             EchoPreprocessor(),
             FakeCalibrationRepository(),
             heroCatalog = repo,
-            heroRecognitionStore = heroStore(),
-            referenceLoader = { _, entry -> com.draftlens.vision.heroes.HeroReference(entry, referencePixels, 32, 32) },
+            heroRecognitionStore = recognitionStore,
+            referenceLoader = { _, entry -> com.draftlens.vision.heroes.HeroReference(entry, referencePixels, 16, 16) },
         )
     }
 
@@ -832,6 +903,126 @@ class VisionLabViewModelTest {
         assertEquals(listOf("Miya"), results.map { it.canonicalName })
         assertTrue(vm.searchCatalog("").isEmpty())
         assertTrue(vm.searchCatalog("zzz-nobody").isEmpty())
+    }
+
+    private fun inverseGradient(size: Int = 16): IntArray =
+        IntArray(size * size) { gradient(size)[it].let { p ->
+            0xFF000000.toInt() or
+                (255 - ((p shr 16) and 0xFF)) or
+                ((255 - ((p shr 8) and 0xFF)) shl 8) or
+                (255 - (p and 0xFF))
+        } }
+
+    private fun storeAt(file: java.io.File): com.draftlens.datastore.HeroRecognitionStore =
+        com.draftlens.datastore.HeroRecognitionStore(
+            androidx.datastore.preferences.core.PreferenceDataStoreFactory.create(
+                scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob()),
+            ) { file },
+        )
+
+    @Test fun `a uniform gray crop produces InsufficientVisualInformation instead of candidates`() = runBlocking {
+        val blank = OriginalFrame(
+            id = FrameId("blank"),
+            payload = PixelArrayFramePayload(16, 16, IntArray(16 * 16) { 0xFF808080.toInt() }),
+            sourceWidth = 16,
+            sourceHeight = 16,
+            displayRotation = FrameRotation.ROTATION_0,
+            rotation = FrameRotation.ROTATION_0,
+            capturedAtElapsedRealtimeMs = 10_000,
+            wallClockTimestampMs = 1_700_000_000_000,
+            captureLatencyMs = 4,
+        )
+        val vm = recognitionVm(frame = blank)
+        vm.syncHeroCatalog()
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
+        val slotId = vm.uiState.value.slots.single().id
+
+        vm.identifySelectedSlot()
+        eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.INSUFFICIENT_INFO }
+
+        val slot = vm.uiState.value.heroRecognition[slotId]!!
+        assertEquals(HeroSlotPhase.INSUFFICIENT_INFO, slot.phase)
+        assertTrue("candidates must never appear for a blank crop", slot.candidates.isEmpty())
+        assertTrue(
+            "message was: ${slot.message}",
+            slot.message!!.contains("Not enough visual information"),
+        )
+    }
+
+    @Test fun `a textured crop matching nothing keeps a distinct NoMatch state`() = runBlocking {
+        val vm = recognitionVm(referencePixels = inverseGradient(16))
+        vm.syncHeroCatalog()
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
+        val slotId = vm.uiState.value.slots.single().id
+
+        vm.identifySelectedSlot()
+        eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.NO_MATCH }
+
+        val slot = vm.uiState.value.heroRecognition[slotId]!!
+        assertEquals(HeroSlotPhase.NO_MATCH, slot.phase)
+        assertNotNull(slot.bestSimilarity)
+    }
+
+    @Test fun `a confirmation that cannot be persisted is reported and never shown as successful`() = runBlocking {
+        val dir = java.nio.file.Files.createTempDirectory("hero-confirmations").toFile()
+        val store = storeAt(java.io.File(dir, "confirmations.preferences_pb"))
+        val vm = recognitionVm(recognitionStore = store)
+        vm.syncHeroCatalog()
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
+        val slotId = vm.uiState.value.slots.single().id
+        vm.identifySelectedSlot()
+        eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CANDIDATES }
+
+        // Sabotage the store: remove the directory the preferences document lives in.
+        dir.deleteRecursively()
+        vm.confirmHero(slotId, "miya")
+        eventually(5_000) { vm.uiState.value.message?.contains("could not be saved") == true }
+
+        assertEquals(HeroSlotPhase.CANDIDATES, vm.uiState.value.heroRecognition[slotId]?.phase)
+    }
+
+    @Test fun `a confirmation that cannot be cleared is reported and never removed silently`() = runBlocking {
+        val dir = java.nio.file.Files.createTempDirectory("hero-confirmations").toFile()
+        val store = storeAt(java.io.File(dir, "confirmations.preferences_pb"))
+        val vm = recognitionVm(recognitionStore = store)
+        vm.syncHeroCatalog()
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
+        val slotId = vm.uiState.value.slots.single().id
+        vm.identifySelectedSlot()
+        eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CANDIDATES }
+        vm.confirmHero(slotId, "miya")
+        eventually(5_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CONFIRMED }
+
+        // Sabotage the store, then try to clear.
+        dir.deleteRecursively()
+        vm.clearHeroConfirmation(slotId)
+        eventually(5_000) { vm.uiState.value.message?.contains("could not be cleared") == true }
+
+        assertEquals(HeroSlotPhase.CONFIRMED, vm.uiState.value.heroRecognition[slotId]?.phase)
+    }
+
+    @Test fun `correcting a candidate directly works without clearing first`() = runBlocking {
+        val vm = recognitionVm()
+        vm.syncHeroCatalog()
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
+        val slotId = vm.uiState.value.slots.single().id
+        vm.identifySelectedSlot()
+        eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CANDIDATES }
+        vm.confirmHero(slotId, "miya")
+        eventually(5_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CONFIRMED }
+
+        // Correct the confirmation directly; the user must not clear or re-identify first.
+        vm.confirmHero(slotId, "layla")
+        eventually(5_000) { vm.uiState.value.heroRecognition[slotId]?.let { it.phase == HeroSlotPhase.CONFIRMED && it.message == "Layla" } == true }
+
+        val state = vm.uiState.value.heroRecognition[slotId]!!
+        assertEquals(HeroSlotPhase.CONFIRMED, state.phase)
+        assertEquals("Layla", state.message)
     }
 
     // endregion

@@ -19,10 +19,20 @@ object HeroReferenceImages {
         val sample = (maxOf(options.outWidth, options.outHeight) / MAX_REFERENCE_DIMENSION).coerceAtLeast(1)
         val decoded = BitmapFactory.Options().apply { inSampleSize = sample }
         val bitmap = BitmapFactory.decodeFile(file.absolutePath, decoded) ?: return null
-        val pixels = IntArray(bitmap.width * bitmap.height)
-        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        bitmap.recycle()
-        HeroReference(entry, pixels, bitmap.width, bitmap.height)
+        try {
+            // Read the dimensions before recycling; the reads must complete first.
+            val width = bitmap.width
+            val height = bitmap.height
+            val pixels = IntArray(width * height)
+            bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+            HeroReference(entry, pixels, width, height)
+        } finally {
+            try {
+                bitmap.recycle()
+            } catch (_: Exception) {
+                // A bitmap that could not be recycled is a leak, not a correctness failure.
+            }
+        }
     }.getOrNull()
 
     private const val MAX_REFERENCE_DIMENSION = 256

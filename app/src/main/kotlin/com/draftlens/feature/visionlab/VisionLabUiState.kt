@@ -59,7 +59,7 @@ data class VisionLabUiState(
 }
 
 /** Phase of a slot's hero recognition flow. */
-enum class HeroSlotPhase { IDLE, PROCESSING, CANDIDATES, NO_MATCH, CONFIRMED, FAILED }
+enum class HeroSlotPhase { IDLE, PROCESSING, CANDIDATES, NO_MATCH, CONFIRMED, FAILED, INSUFFICIENT_INFO }
 
 /** Recognition state of one slot. */
 data class HeroSlotUiState(
@@ -68,7 +68,7 @@ data class HeroSlotUiState(
     val candidates: List<HeroCandidate> = emptyList(),
     /** Best similarity seen in [HeroSlotPhase.NO_MATCH]; null elsewhere. */
     val bestSimilarity: Float? = null,
-    /** User-facing message for [HeroSlotPhase.FAILED]; also used for the confirmed hero's name in [HeroSlotPhase.CONFIRMED]. */
+    /** User-facing message for [HeroSlotPhase.FAILED] and [HeroSlotPhase.INSUFFICIENT_INFO]; also used for the confirmed hero's name in [HeroSlotPhase.CONFIRMED]. */
     val message: String? = null,
     /** The confirmed hero id in [HeroSlotPhase.CONFIRMED]. */
     val confirmedHeroId: String? = null,

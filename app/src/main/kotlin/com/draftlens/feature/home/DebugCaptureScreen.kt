@@ -22,18 +22,28 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.draftlens.capture.CaptureController
 import com.draftlens.datastore.AppPreferencesRepository
 import com.draftlens.models.CaptureStatus
+import android.content.Intent
+import android.provider.Settings
+import android.Manifest
+import android.os.Build
 import com.draftlens.vision.model.android.BitmapFramePayload
 
 @Composable
@@ -58,6 +68,13 @@ fun DebugCaptureScreen(
         }
     }
 
+    // Notification permission: the capture notification carries the "Freeze current frame"
+    // action, so without it the MLBB freeze workflow is unreachable.
+    var notificationsEnabled by remember { mutableStateOf(areCaptureNotificationsEnabled(activity)) }
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> notificationsEnabled = granted || areCaptureNotificationsEnabled(activity) }
+
     val requestStartCapture = {
         vm.onPermissionRequested()
         launcher.launch(com.draftlens.permissions.ProjectionPermission.createScreenCaptureIntent(activity))
@@ -73,6 +90,21 @@ fun DebugCaptureScreen(
     ) {
         Text("DraftLens — Capture Debug (Sprint 0)", color = Color.White, style = MaterialTheme.typography.titleLarge)
         Text("Detection: Not implemented in Sprint 0", color = Color.Gray)
+
+        MobileLegendsCaptureGuide(
+            notificationsEnabled = notificationsEnabled,
+            onEnableNotifications = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    activity.startActivity(
+                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, activity.packageName)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            },
+        )
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -157,5 +189,65 @@ fun DebugCaptureScreen(
                 }
             }
         }
+    }
+}
+
+/** Guidance for the Mobile Legends freeze workflow and missing-notification handling. */
+@Composable
+private fun MobileLegendsCaptureGuide(
+    notificationsEnabled: Boolean,
+    onEnableNotifications: () -> Unit,
+) {
+    val body = MaterialTheme.typography.bodySmall
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text("Capturing Mobile Legends: Bang Bang", style = MaterialTheme.typography.titleMedium)
+            Text("1. Tap Start Capture.", style = body)
+            Text(
+                "2. When Android asks what to capture, choose Entire screen / full device display — " +
+                    "not the DraftLens app window. App-window capture cannot see the game, " +
+                    "so the frozen frame would show this app instead of MLBB.",
+                style = body,
+            )
+            Text(
+                "3. Open Mobile Legends and wait for the desired draft screen.",
+                style = body,
+            )
+            Text(
+                "4. Pull down the notification shade and tap “Freeze current frame” on the " +
+                    "DraftLens capture notification. The latest game frame is kept in memory — no need to leave the game.",
+                style = body,
+            )
+            Text(
+                "5. Return to DraftLens. Vision Lab shows the frozen MLBB frame, not this screen. " +
+                    "Tap Resume there, or “Resume live capture” in the notification, to go back to live capture.",
+                style = body,
+            )
+            if (!notificationsEnabled) {
+                Text(
+                    "Notifications are disabled: the “Freeze current frame” action is not reachable from the shade while in game.",
+                    style = body,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                TextButton(onClick = onEnableNotifications) { Text("Enable notifications") }
+            }
+        }
+    }
+}
+
+private fun areCaptureNotificationsEnabled(context: android.content.Context): Boolean {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+    ) {
+        return false
+    }
+    return try {
+        NotificationManagerCompat.from(context).areNotificationsEnabled()
+    } catch (e: Exception) {
+        true
     }
 }

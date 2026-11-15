@@ -89,7 +89,12 @@ object PixelSlotImageExtractor : SlotImageExtractor {
         return Result.success(output)
     }
 
-    /** Rotates the axis-aligned crop so the result matches what the canvas shows. */
+    /**
+     * Rotates the axis-aligned crop so the result matches what the canvas shows.
+     * The mappings follow [FrameTransform.sourceToOriented]: oriented coordinate
+     * (x, y) receives the source pixel at the inverse point, sampled at pixel centers.
+     * For example, ROTATION_90 maps source (sx, sy) to oriented (height - 1 - sy, sx).
+     */
     private fun rotateToUpright(
         pixels: IntArray,
         width: Int,
@@ -98,28 +103,31 @@ object PixelSlotImageExtractor : SlotImageExtractor {
     ): Triple<IntArray, Int, Int> = when (rotation) {
         FrameRotation.ROTATION_0 -> Triple(pixels, width, height)
         FrameRotation.ROTATION_90 -> {
-            // oriented(xx, yy) = source(col = yy, row = height - 1 - xx)
-            val out = IntArray(width * height)
-            for (xx in 0 until height) {
-                for (yy in 0 until width) {
-                    out[xx * width + yy] = pixels[(height - 1 - xx) * width + yy]
+            // sourceToOriented: (x, y) -> (height - y, x); oriented is height x width.
+            // oriented(ox, oy) = source(oy, height - 1 - ox).
+            val out = IntArray(pixels.size)
+            for (y in 0 until height) {
+                for (x in 0 until width) {
+                    out[x * height + (height - 1 - y)] = pixels[y * width + x]
                 }
             }
             Triple(out, height, width)
         }
 
         FrameRotation.ROTATION_180 -> {
-            val out = IntArray(width * height)
+            // sourceToOriented: (x, y) -> (width - x, height - y); reversed array.
+            val out = IntArray(pixels.size)
             for (i in pixels.indices) out[pixels.size - 1 - i] = pixels[i]
             Triple(out, width, height)
         }
 
         FrameRotation.ROTATION_270 -> {
-            // oriented(xx, yy) = source(col = width - 1 - yy, row = xx)
-            val out = IntArray(width * height)
-            for (xx in 0 until height) {
-                for (yy in 0 until width) {
-                    out[xx * width + yy] = pixels[xx * width + (width - 1 - yy)]
+            // sourceToOriented: (x, y) -> (y, width - x); oriented is height x width.
+            // oriented(ox, oy) = source(width - 1 - oy, ox).
+            val out = IntArray(pixels.size)
+            for (y in 0 until height) {
+                for (x in 0 until width) {
+                    out[(width - 1 - x) * height + y] = pixels[y * width + x]
                 }
             }
             Triple(out, height, width)

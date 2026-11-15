@@ -55,39 +55,104 @@ class SlotImageExtractorTest {
         assertEquals(2, wide.getOrThrow().payload.height)
     }
 
-    @Test fun `the extracted image matches the oriented appearance for every rotation`() {
-        // Asymmetric image so orientation mistakes are visible.
-        val pixels = intArrayOf(
-            0xFF000000.toInt(), 0xFF000001.toInt(), 0xFF000002.toInt(), 0xFF000003.toInt(),
-            0xFF000010.toInt(), 0xFF000011.toInt(), 0xFF000012.toInt(), 0xFF000013.toInt(),
-            0xFF000100.toInt(), 0xFF000101.toInt(), 0xFF000102.toInt(), 0xFF000103.toInt(),
-            0xFF001000.toInt(), 0xFF001001.toInt(), 0xFF001002.toInt(), 0xFF001003.toInt(),
+    /**
+     * Asymmetric 3x2 source for rotation tests (not square on purpose):
+     *   row 0: 10 11 12
+     *   row 1: 20 21 22
+     * Independently calculated by hand against FrameTransform.sourceToOriented().
+     */
+    private val asymmetricPixels = intArrayOf(10, 11, 12, 20, 21, 22)
+
+    @Test fun `the extracted image matches the sourceToOriented convention for every rotation`() {
+        val rect = NormalizedRect(0f, 0f, 1f, 1f) // full frame; rotation is translation-invariant
+        val expected = mapOf(
+            FrameRotation.ROTATION_0 to Triple(3, 2, intArrayOf(10, 11, 12, 20, 21, 22)),
+            FrameRotation.ROTATION_90 to Triple(2, 3, intArrayOf(20, 10, 21, 11, 22, 12)),
+            FrameRotation.ROTATION_180 to Triple(3, 2, intArrayOf(22, 21, 20, 12, 11, 10)),
+            FrameRotation.ROTATION_270 to Triple(2, 3, intArrayOf(12, 22, 11, 21, 10, 20)),
         )
-        val rect = NormalizedRect(0f, 0f, 0.5f, 0.5f) // source top-left quadrant
         for (rotation in FrameRotation.entries) {
-            val source = frame(4, 4, rotation, pixels.copyOf())
+            val source = frame(3, 2, rotation, asymmetricPixels.copyOf())
             val result = PixelSlotImageExtractor.extract(source, slot(rect))
 
             assertTrue("rotation $rotation must succeed", result.isSuccess)
             val image = result.getOrThrow().payload as PixelArrayFramePayload
-            assertEquals("dims[$rotation]", 2, image.width)
-            assertEquals("dims[$rotation]", 2, image.height)
-            val content = image.pixels().toList()
-            assertEquals("upright[$rotation]", expectedQuadrant(rotation), content)
+            val (expectedWidth, expectedHeight, expectedPixels) = expected.getValue(rotation)
+            assertEquals("dims[$rotation]", expectedWidth, image.width)
+            assertEquals("dims[$rotation]", expectedHeight, image.height)
+            assertEquals("pixels[$rotation]", expectedPixels.toList(), image.pixels().toList())
         }
     }
 
-    private fun expectedQuadrant(rotation: FrameRotation): List<Int> {
-        val a = 0xFF000000.toInt()
-        val b = 0xFF000001.toInt()
-        val e = 0xFF000010.toInt()
-        val f = 0xFF000011.toInt()
-        // Axis-aligned 2x2 crop of the source top-left quadrant, upright-rotated per frame rotation.
-        return when (rotation) {
-            FrameRotation.ROTATION_0 -> listOf(a, b, e, f)
-            FrameRotation.ROTATION_90 -> listOf(e, f, a, b)
-            FrameRotation.ROTATION_180 -> listOf(f, e, b, a)
-            FrameRotation.ROTATION_270 -> listOf(b, a, f, e)
+    /**
+     * 5x3 frame; crop covers columns 1..3, all rows (top and bottom edge, half the width):
+     *   row 0: 01 02
+     *   row 1: 11 12
+     *   row 2: 21 22   (crop is 2 wide x 3 tall)
+     * Expected values computed by hand from FrameTransform.sourceToOriented().
+     */
+    private val edgeFramePixels = intArrayOf(
+        0, 1, 2, 3, 4,
+        10, 11, 12, 13, 14,
+        20, 21, 22, 23, 24,
+    )
+
+    @Test fun `a crop touching the top and bottom edges extracts the edge columns exactly`() {
+        val rect = NormalizedRect(0.2f, 0f, 0.6f, 1f) // left=1px, right=3px of 5
+        val expected = mapOf(
+            FrameRotation.ROTATION_0 to Triple(2, 3, intArrayOf(1, 2, 11, 12, 21, 22)),
+            FrameRotation.ROTATION_90 to Triple(3, 2, intArrayOf(21, 11, 1, 22, 12, 2)),
+            FrameRotation.ROTATION_180 to Triple(2, 3, intArrayOf(22, 21, 12, 11, 2, 1)),
+            FrameRotation.ROTATION_270 to Triple(3, 2, intArrayOf(2, 12, 22, 1, 11, 21)),
+        )
+        for (rotation in FrameRotation.entries) {
+            val source = frame(5, 3, rotation, edgeFramePixels.copyOf())
+            val result = PixelSlotImageExtractor.extract(source, slot(rect))
+
+            assertTrue("rotation $rotation must succeed", result.isSuccess)
+            val image = result.getOrThrow().payload as PixelArrayFramePayload
+            val (expectedWidth, expectedHeight, expectedPixels) = expected.getValue(rotation)
+            assertEquals("dims[$rotation]", expectedWidth, image.width)
+            assertEquals("dims[$rotation]", expectedHeight, image.height)
+            assertEquals("pixels[$rotation]", expectedPixels.toList(), image.pixels().toList())
+        }
+    }
+
+    /**
+     * Same 5x3 frame; crop covers rows 1..3, columns 3..5 (bottom and right edges):
+     *   row 1: 13 14
+     *   row 2: 23 24   (crop is 2 wide x 2 tall)
+     */
+    @Test fun `a crop touching the bottom and right edges extracts exactly those pixels`() {
+        val rect = NormalizedRect(0.6f, 1f / 3f, 1f, 1f) // left=3px, top=1px
+        val expected = mapOf(
+            FrameRotation.ROTATION_0 to Triple(2, 2, intArrayOf(13, 14, 23, 24)),
+            FrameRotation.ROTATION_90 to Triple(2, 2, intArrayOf(23, 13, 24, 14)),
+            FrameRotation.ROTATION_180 to Triple(2, 2, intArrayOf(24, 23, 14, 13)),
+            FrameRotation.ROTATION_270 to Triple(2, 2, intArrayOf(14, 24, 13, 23)),
+        )
+        for (rotation in FrameRotation.entries) {
+            val source = frame(5, 3, rotation, edgeFramePixels.copyOf())
+            val result = PixelSlotImageExtractor.extract(source, slot(rect))
+
+            assertTrue("rotation $rotation must succeed", result.isSuccess)
+            val image = result.getOrThrow().payload as PixelArrayFramePayload
+            val (expectedWidth, expectedHeight, expectedPixels) = expected.getValue(rotation)
+            assertEquals("dims[$rotation]", expectedWidth, image.width)
+            assertEquals("dims[$rotation]", expectedHeight, image.height)
+            assertEquals("pixels[$rotation]", expectedPixels.toList(), image.pixels().toList())
+        }
+    }
+
+    @Test fun `extracting does not mutate the source pixel array for any rotation`() {
+        val rect = NormalizedRect(0.2f, 0f, 0.6f, 1f)
+        for (rotation in FrameRotation.entries) {
+            val pixels = edgeFramePixels.copyOf()
+            val source = frame(5, 3, rotation, pixels)
+
+            PixelSlotImageExtractor.extract(source, slot(rect))
+
+            assertEquals("source mutated for $rotation", edgeFramePixels.toList(), pixels.toList())
         }
     }
 

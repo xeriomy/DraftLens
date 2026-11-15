@@ -12,6 +12,13 @@ sealed interface HeroIdentifyOutcome {
     data class Candidates(val candidates: List<HeroCandidate>) : HeroIdentifyOutcome
     data class NoMatch(val bestSimilarity: Float) : HeroIdentifyOutcome
     data class Failed(val message: String) : HeroIdentifyOutcome
+
+    /**
+     * The crop is too empty or featureless for matching to mean anything: a uniform gray,
+     * black, white or single-colour image, or a crop smaller than the minimum useful size.
+     * Distinct from [NoMatch]: no similarity was computed and no candidates exist.
+     */
+    data class InsufficientVisualInformation(val reason: String) : HeroIdentifyOutcome
 }
 
 /**
@@ -28,10 +35,18 @@ object HeroRecognition {
         references: List<HeroReference>,
         config: HeroMatchConfig = HeroMatchConfig(),
     ): HeroIdentifyOutcome {
-        val usable = references.filter { it.pixels.size == it.width * it.height && it.width > 0 && it.height > 0 }
         if (width <= 0 || height <= 0 || pixels.size != width * height) {
             return HeroIdentifyOutcome.Failed("The extracted image is empty or invalid.")
         }
+        // Blank and low-information crops must never produce candidates. This runs before the
+        // catalog is consulted: there is nothing meaningful to match.
+        val information = VisualInformationAnalyzer.analyze(pixels, width, height)
+        information.insufficientReason?.let { reason ->
+            return HeroIdentifyOutcome.InsufficientVisualInformation(
+                "Not enough visual information: $reason. Select a clearer hero crop.",
+            )
+        }
+        val usable = references.filter { it.pixels.size == it.width * it.height && it.width > 0 && it.height > 0 }
         if (usable.isEmpty()) {
             return HeroIdentifyOutcome.Failed(
                 "No usable hero reference images are cached. Sync the hero catalog first.",

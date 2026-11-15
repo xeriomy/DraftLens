@@ -160,6 +160,7 @@ private fun HeroResultArea(
                 )
             }
             TextButton(onClick = vm::identifySelectedSlot) { Text("Try again") }
+            ManualHeroSearch(slotId = slotId, vm = vm)
         }
 
         HeroSlotPhase.NO_MATCH -> {
@@ -174,14 +175,28 @@ private fun HeroResultArea(
             TextButton(onClick = vm::identifySelectedSlot) { Text("Try again") }
         }
 
+        HeroSlotPhase.INSUFFICIENT_INFO -> {
+            Text(
+                state?.message ?: "Not enough visual information. Select a clearer hero crop.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            OutlinedButton(onClick = vm::identifySelectedSlot) { Text("Try again") }
+            ManualHeroSearch(slotId = slotId, vm = vm)
+        }
+
         HeroSlotPhase.CONFIRMED -> {
+            var showCorrection by remember(slotId) { mutableStateOf(false) }
             Text(
                 "Confirmed hero: ${state?.message}",
                 style = MaterialTheme.typography.bodyLarge,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { vm.clearHeroConfirmation(slotId) }) { Text("Clear") }
-                TextButton(onClick = vm::identifySelectedSlot) { Text("Change…") }
+                TextButton(onClick = { showCorrection = true }) { Text("Change…") }
+            }
+            if (showCorrection) {
+                ManualHeroSearch(slotId = slotId, vm = vm)
             }
         }
 
