@@ -43,7 +43,7 @@ class HeroRecognitionTest {
             references = listOf(miyaReference),
         )
 
-        val candidates = (outcome as HeroIdentifyOutcome.Candidates).heroCandidates
+        val candidates = (outcome as HeroIdentifyOutcome.Candidates).candidates
         assertEquals(1, candidates.size)
         assertEquals("miya", candidates.single().hero.canonicalName)
         assertEquals(1f, candidates.single().similarity, 0.001f)
