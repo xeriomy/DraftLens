@@ -166,7 +166,7 @@ No recommendation features, no overlays, no automation, PR stays draft and unmer
       no direct-write fallback; failures preserve the previous target; `*.tmp` swept
 - [x] Part H: reference loader reads dimensions before recycling; pixels read before release;
       exceptional paths recycle too
-- [ ] CI green on the final head; instrumentation suite remains compiled-not-executed
+- [x] CI green on the final head (run 43746648882, head 1c7397b925dd2683b3d763e552d610d2e464ecb7; instrumentation compiled, not executed — no KVM on the runner)
       (no KVM on the runner) — needs a device or KVM-enabled emulator
 - [ ] Physical-device smoke of the freeze workflow; on-device accuracy
       evaluation; real-screen threshold and heuristic calibration
