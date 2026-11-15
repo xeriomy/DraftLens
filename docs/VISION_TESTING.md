@@ -71,10 +71,16 @@ The APK artifact digest is reported in the implementation report and in the pull
 
 ## What is not covered
 
-- **No physical-device test.** No device or emulator was available in the authoring
-  environment. The MediaProjection lifecycle, the Vision Lab overlay alignment on a real
-  screen, and the calibration flow on a real game were **not** executed. The checklist in
-  `docs/TESTING_PHYSICAL_DEVICE.md` remains pending.
+- **Physical-device smoke: maintainer-reported PASS for the Vision Lab interaction behavior.**
+  Slot selection, movement and resizing; the long-press property menu; long-press-and-drag
+  creation; the original compact red X deletion control; copy, paste and duplicate; fullscreen
+  entry/exit and Android Back; annotation gestures isolated from page scrolling; and existing
+  portrait/landscape rendering were confirmed working on a physical device. Device model,
+  Android version, install source/APK artifact, test date, logs and recordings were **not**
+  supplied, so they are not recorded here.
+- **MediaProjection lifecycle matrix remains NOT RUN.** Repeated start/stop, projection
+  revocation, app-process interruption, rotation/resize, background stability and sustained
+  capture scenarios in `docs/TESTING_PHYSICAL_DEVICE.md` are untested.
 - **Instrumentation tests are compiled, not executed.** `assembleAndroidTest` proves the
   instrumentation sources compile; it does not run them.
 - **No performance claim.** The JVM suite measures nothing about real hardware. Processing

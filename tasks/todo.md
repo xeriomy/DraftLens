@@ -45,16 +45,21 @@ Latest green run: https://github.com/xeriomy/DraftLens/actions/runs/43643640990
 (head SHA `5ffb0c1`).
 
 The frame sizing and rendering fix was confirmed by the user on a physical device before the
-Sprint 1A.1 work started and was left unchanged. The 1A.1 and 1A.2 interaction changes
-have **not**
-been verified on a device.
+Sprint 1A.1 work started and was left unchanged. The Vision Lab interaction behavior in the
+retained 1A.2 state was also smoke-tested on a physical device by the maintainer and confirmed
+working: slot selection, movement and resizing; the long-press property menu; long-press-and-
+drag creation; the original compact red X deletion control; copy, paste and duplicate;
+fullscreen entry/exit and Android Back; annotation gestures isolated from page scrolling; and
+portrait/landscape rendering. Device model, Android version, install source/APK artifact, test
+date, logs and recordings were not supplied. The MediaProjection lifecycle matrix in
+`docs/TESTING_PHYSICAL_DEVICE.md` remains **NOT RUN**.
 
 Whole-branch review against the plan and spec: eight findings fixed in `691b9d2`, each with a
 test that failed first. The remaining minor findings are listed in the implementation report
 and the review ledger.
 
-Physical-device verification of the Vision Lab is **pending**. No emulator or device was
-available in this environment.
+Physical-device verification of the Vision Lab interaction behavior is **maintainer-reported
+PASS** (device details not supplied). The MediaProjection lifecycle matrix is **NOT RUN**.
 
 ## Sprint 0.1 Capture Hardening
 - [x] Task 1: AGP 8.6.1 (API 35 support); Gradle/Kotlin unchanged

@@ -290,16 +290,20 @@ slot coordinates for matching screen layouts. The "Detection: not implemented" n
 
 ## Physical-device status
 
-- **Sprint 1A: NOT RUN.** The Vision Lab, the annotation canvas, overlay alignment on a real
-  screen and the calibration flow were not exercised on hardware.
-- **Sprint 1A.1 / 1A.2 interaction changes: NOT RUN.** The interaction redesign and the
-  bug-fix pass were not verified on a physical device; the paste fix, the menu/selection
-  sync, the long-press cancellation and the property editor's error feedback remain
-  unconfirmed on hardware.
+- **Sprint 1A Vision Lab interaction: maintainer-reported PASS (device smoke).** The Vision
+  Lab interaction behavior in the retained 1A.2 state was confirmed working on a physical
+  Android device: slot selection, movement and resizing; long-press property menu;
+  long-press-and-drag creation; the original compact red X deletion control; copy, paste and
+  duplicate; fullscreen entry/exit and Android Back; annotation gestures isolated from page
+  scrolling; and existing portrait/landscape rendering. Device model, Android version,
+  install source/APK artifact, test date, logs and recordings were **not** supplied, so they
+  are not recorded here and no measurements are claimed.
+- **MediaProjection lifecycle matrix remains NOT RUN.** The repeated start/stop, projection
+  revocation, app-process interruption, rotation/resize, background stability and sustained
+  capture scenarios in `docs/TESTING_PHYSICAL_DEVICE.md` are untested.
 - **Sprint 0: PARTIAL, maintainer-reported.** Capture and live preview were reported working
   on a physical device; device model, Android version, frame counts and measurements were not
   supplied, so full PASS is not claimed.
-- The expanded lifecycle matrix in `docs/TESTING_PHYSICAL_DEVICE.md` remains **NOT RUN**.
 
 ## Open limitations
 

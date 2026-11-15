@@ -43,8 +43,9 @@ CI (GitHub Actions, ubuntu-latest x86_64) is the build of record: `test`,
 `assembleAndroidTest`, `lint`, `assembleDebug`, plus a `draftlens-debug` APK artifact.
 The authoring host is aarch64 and AGP 8.6.1 ships only an x86_64 `aapt2`, so no Gradle
 task that touches resources can run there. Instrumentation tests are compiled, not executed:
-no device or emulator was available. Physical-device verification of the Vision Lab is
-**pending**.
+no device or emulator was available. Vision Lab interaction behavior is maintainer-reported
+PASS on a physical device (device details not supplied); the MediaProjection lifecycle
+matrix is **NOT RUN**.
 
 ## Sprint 0.1 — Capture Hardening & Technical Cleanup
 **Objective:** Harden the reported-working capture path before Vision Engine. No recognition,

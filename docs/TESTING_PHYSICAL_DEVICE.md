@@ -4,6 +4,19 @@ Status values: **PASS**, **FAIL**, **PARTIAL**, **NOT RUN**. Record the commit S
 
 > Maintainer-reported baseline: Sprint 0 capture and preview were smoke-tested on a physical Android device and confirmed working. Device details, versions, frame counts and latency measurements from that test were not provided, so they are not recorded here. First capture is **PARTIAL** on that evidence; all expanded lifecycle rows below remain **NOT RUN**.
 
+> Maintainer-reported (Vision Lab, 1A.2 retained state): the Vision Lab interaction behavior in the currently shipped build was smoke-tested on a physical Android device and confirmed working. Device model, Android version, install source/APK artifact, test date, logs and recordings were **not** supplied, so they are not recorded here and no measurements are claimed. Tested and confirmed working:
+>
+> - Slot selection, movement and resizing.
+> - Long-press property menu.
+> - Long-press-and-drag slot creation (creation selects the new slot; the property editor does not open automatically).
+> - The original compact red X deletion control at the top-right corner.
+> - Copy, paste and duplicate.
+> - Fullscreen entry/exit and Android Back.
+> - Annotation gesture isolation from page scrolling.
+> - Existing portrait/landscape rendering behavior.
+>
+> This does **not** cover the MediaProjection lifecycle matrix. Repeated start/stop cycles, projection revocation, app-process interruption, rotation/resize handling, background stability, sustained capture and the remaining lifecycle rows below remain **NOT RUN**.
+
 | # | Scenario | Expected behavior | Status |
 |---:|---|---|---|
 | 1 | First capture from a cold launch | Consent appears, foreground service starts, preview shows frames | PARTIAL (maintainer-reported basic smoke: capture + live preview confirmed working; device/version/timings not supplied) |
