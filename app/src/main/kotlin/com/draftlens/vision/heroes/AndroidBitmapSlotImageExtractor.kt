@@ -5,7 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.os.SystemClock
 import com.draftlens.vision.annotation.DraftSlot
-import com.draftlens.vision.model.BitmapFramePayload
+import com.draftlens.vision.model.android.BitmapFramePayload
 import com.draftlens.vision.model.FrameRotation
 import com.draftlens.vision.model.FrameId
 import com.draftlens.vision.model.OriginalFrame

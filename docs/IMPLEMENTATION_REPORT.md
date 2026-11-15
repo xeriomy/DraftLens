@@ -374,3 +374,21 @@ Note: invocation `./gradlew assembleDebug` is intentionally not claimed locally;
 - Native-memory reclamation after reference clearing is not guaranteed and is not a strict one-Bitmap bound
 - OEM/background/store policies and review gates remain for release
 - Physical-device matrix needs execution before store release
+
+## Sprint 1B — hero recognition (in progress)
+
+Branch `sprint-1b-hero-recognition`, PR #3 (draft, **not merged**). See
+`docs/sprints/SPRINT_1B_HERO_RECOGNITION.md` for the full report, including:
+
+- provider-independent hero catalog (Rone Arena primary, MLBBDex cross-check/roles/lanes),
+  atomic file snapshot with offline browsing, HTTPS-only transport;
+- slot extraction from the annotation canvas (all four rotations, edge cases pinned by tests);
+- recognition v0 (dHash + 3×3 normalized color descriptor), labeled similarity, explicit no-match,
+  manual confirmation and correction, per-slot persistence;
+- **accuracy on real MLBB screens is not measured**; the no-match threshold is a starting
+  default, not a calibration; physical-device smoke is pending.
+- Only static public hero catalog data and reference images are downloaded. Frames and crops
+  never leave the device; nothing is written to disk automatically.
+
+This sprint does not add recommendations, counters, synergy scoring, a floating overlay,
+or automatic draft-phase detection, and does not merge PR #3 without review.

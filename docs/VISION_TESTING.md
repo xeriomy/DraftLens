@@ -94,3 +94,16 @@ mismatches, oversized output, unsupported formats and render errors all produce 
 `ProcessFrameResult.Failure` with a reason code, and no partial frame is published. The
 calibration suites assert that an unsupported or corrupt document is reported and left
 untouched, and that only clearing the document recovers from it.
+
+## Sprint 1B tests (inventory)
+
+| Suite | File | Covers |
+|---|---|---|
+| Hero catalog sync | `heroes/HeroCatalogSyncTest.kt` | pagination to the reported total, mirror fallback, non-zero API code, duplicate-ID collapse, invalid-record skip, MLBBDex cross-check match/unavailable, roles/lanes by slug |
+| Hero catalog codec | `heroes/HeroCatalogCodecTest.kt` | snapshot round-trip, schema refusal, blank id/name, non-HTTPS asset URL, unknown fields |
+| Hero catalog repository | `heroes/FileHeroCatalogRepositoryTest.kt` | refresh stores snapshot + assets, atomic cache, offline restart, corrupt cache error, asset magic-byte/content-type/size validation, refresh failure keeps cache |
+| Slot extraction | `heroes/SlotImageExtractorTest.kt` | portrait/landscape, 0/90/180/270 upright output, edge-touching and minimum-size rectangles, below-one-pixel rejection, payload mismatch, source untouched |
+| Matcher | `heroes/HeroMatcherTest.kt` | identical images match, ranking order, no-match threshold, ambiguous gap, corrupt references skipped, hamming/color distance, determinism |
+| Recognition orchestration | `heroes/HeroRecognitionTest.kt` | candidates path, no usable references → failure, no-match path |
+| Confirmation store | `datastore/HeroRecognitionStoreTest.kt` | confirm/load/replace/clear, corrupt and future documents read as empty |
+| ViewModel | `feature/visionlab/VisionLabViewModelTest.kt` | identify without slot → message, identify without catalog → FAILED honestly, synced catalog → candidates, confirm → persisted, clear → removed, catalog name search |

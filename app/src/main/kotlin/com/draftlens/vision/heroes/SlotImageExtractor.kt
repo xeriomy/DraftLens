@@ -36,7 +36,7 @@ fun pixelsOf(image: SlotImage): Triple<IntArray, Int, Int>? = when (val payload 
         Triple(pixels, payload.width, payload.height)
     }
 
-    is com.draftlens.vision.model.BitmapFramePayload -> {
+    is com.draftlens.vision.model.android.BitmapFramePayload -> {
         val bitmap = payload.bitmap
         if (bitmap.isRecycled) {
             null

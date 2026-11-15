@@ -1,7 +1,6 @@
 package com.draftlens.vision.heroes
 
 import android.graphics.BitmapFactory
-import com.draftlens.vision.model.BitmapFramePayload
 import java.io.File
 
 /**
@@ -11,7 +10,7 @@ import java.io.File
 object HeroReferenceImages {
 
     /** Decode a cached reference asset, downsampled so matching stays cheap. Null when missing/corrupt. */
-    fun loadReference(entry: HeroCatalogEntry, file: File): HeroReference? = runCatching {
+    fun loadReference(file: File, entry: HeroCatalogEntry): HeroReference? = runCatching {
         val options = BitmapFactory.Options().apply {
             inJustDecodeBounds = true
         }

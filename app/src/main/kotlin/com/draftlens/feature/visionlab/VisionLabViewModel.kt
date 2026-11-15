@@ -7,7 +7,6 @@ import com.draftlens.vision.heroes.HeroCatalogRepository
 import com.draftlens.vision.heroes.HeroReference
 import com.draftlens.vision.heroes.HeroRecognition
 import com.draftlens.vision.heroes.HeroReferenceImages
-import com.draftlens.vision.heroes.HeroSlotPhase
 import com.draftlens.vision.heroes.SlotImageExtractor
 import com.draftlens.vision.heroes.SlotImageExtractors
 import com.draftlens.vision.heroes.pixelsOf
@@ -427,7 +426,7 @@ class VisionLabViewModel(
 
                 is IdentifyComputation.Done -> when (val outcome = computation.outcome) {
                     is com.draftlens.vision.heroes.HeroIdentifyOutcome.Candidates -> updateHeroSlot(slot.id) {
-                        com.draftlens.feature.visionlab.HeroSlotUiState(HeroSlotPhase.CANDIDATES, candidates = outcome.heroCandidates)
+                        com.draftlens.feature.visionlab.HeroSlotUiState(HeroSlotPhase.CANDIDATES, candidates = outcome.candidates)
                     }
 
                     is com.draftlens.vision.heroes.HeroIdentifyOutcome.NoMatch -> updateHeroSlot(slot.id) {
@@ -517,7 +516,7 @@ class VisionLabViewModel(
             val file = heroCatalog.assetFile(entry.id, asset.variant) ?: return@mapNotNull null
             referenceLoader(file, entry)
         }
-        val preview = (image.payload as? com.draftlens.vision.model.BitmapFramePayload)?.bitmap
+        val preview = (image.payload as? com.draftlens.vision.model.android.BitmapFramePayload)?.bitmap
         return IdentifyComputation.Done(
             HeroRecognition.identify(pixels.first, pixels.second, pixels.third, references),
             preview,

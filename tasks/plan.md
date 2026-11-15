@@ -128,3 +128,9 @@ grow without re-architecture.
 - After Phase 1: `./gradlew test` green, app assembles (empty landing OK).
 - After Phase 2: unit tests for state machine + sampler green; lint + assemble green.
 - Final: test + lint + assembleDebug all green; APK exists; manifest grep verified.
+
+### Sprint 1B — Hero recognition (first pipeline)
+- Hero catalog sync (manual refresh, atomic snapshot, offline browsing) wired through a small transport seam.
+- Slot extraction from the annotation canvas with rotation coverage.
+- Recognition v0 with labeled similarity and explicit no-match; manual confirmation required.
+- Draft PR #3; accuracy on real screens not measured; device smoke pending.

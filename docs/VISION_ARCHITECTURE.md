@@ -134,3 +134,23 @@ Slot semantics are validated once, in `vision/annotation/SlotValidator`, and use
 the annotation codec and the calibration codec. A slot the editor would refuse cannot be
 persisted as calibration data, and a stored document that contains one is reported as
 `Corrupt` and left untouched until it is deleted.
+
+## Sprint 1B — hero recognition boundary
+
+`vision/heroes/` holds the recognition pipeline. It consumes `VisionFrame` inputs (the same
+`OriginalFrame`/`SlotImage` contract as the annotation canvas) and never imports capture code.
+Everything network-facing goes through `HeroCatalogTransport`; tests use fake transports.
+
+- **Catalog** (`HeroCatalog*`) is public, static metadata only: hero id/name/images/roles/lanes.
+  Downloaded only on the user's explicit **Sync catalog** action; cached in the app's private
+  storage; works offline after sync.
+- **Extraction** (`SlotImageExtractor`) maps the slot's normalized source rect to source pixels
+  and produces an upright in-memory `SlotImage`. Never written to disk.
+- **Matching** (`HeroMatcher`) is a deterministic dHash + color descriptor. Output is a ranked
+  list of candidates or an explicit no-match. The UI turns that into manual confirm/correct —
+  never an automatic selection.
+- **Confirmations** (`HeroRecognitionStore`) persist `slotId → {heroId, heroName, confirmedAtMs}`
+  in a separate preferences document; it never touches the annotation schema or the calibration
+  store, and it contains no images.
+- **Privacy**: frames and crops stay in memory on-device; only the public static catalog and
+  its reference images are downloaded; INTERNET is the only new permission.

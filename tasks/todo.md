@@ -90,3 +90,11 @@ PASS** (device details not supplied). The MediaProjection lifecycle matrix is **
 ## Phase 4: Docs + verify
 - [x] Task 9: README, ARCHITECTURE, SCREEN_CAPTURE, DATA_SOURCES, ADR-001
 - [x] Task 10: Tests + lint + assembleDebug green; APK + manifest verified; report written
+
+## Sprint 1B: Hero catalog, slot extraction and recognition
+- [x] Hero catalog module (Rone Arena primary, MLBBDex cross-check, atomic cache, offline)
+- [x] Slot image extraction (all rotations, edge cases)
+- [x] Recognition v0: dHash + color descriptor, explicit no-match, manual confirm/correct
+- [x] Vision Lab card: sync, Identify, candidates, confirmed state, manual correction
+- [x] Unit coverage for catalog, cache, extraction, matching, VM flows
+- [ ] Physical-device smoke test and on-device accuracy evaluation (pending)

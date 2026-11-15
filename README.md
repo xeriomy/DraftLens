@@ -5,10 +5,11 @@ working capture path into a real **image-bearing** foundation: frames carry pixe
 is tested, preprocessing validates before it renders, and a Vision Lab lets you place manual
 slot annotations and save calibration profiles.
 
-**Maintainer-reported device smoke:** the Sprint 0 capture path was used on a physical Android
-device and confirmed working. Sprint 1A itself has **not** been verified on a physical device —
-see [docs/TESTING_PHYSICAL_DEVICE.md](docs/TESTING_PHYSICAL_DEVICE.md) and
-[docs/VISION_TESTING.md](docs/VISION_TESTING.md).
+**Maintainer-reported device smoke:** the Sprint 0 capture path and the Sprint 1A Vision
+Lab interaction behavior were used on a physical Android device and confirmed working.
+Device details, the exact build and test dates were not supplied, and the MediaProjection
+lifecycle matrix remains **NOT RUN**. See [docs/TESTING_PHYSICAL_DEVICE.md](docs/TESTING_PHYSICAL_DEVICE.md)
+and [docs/VISION_TESTING.md](docs/VISION_TESTING.md).
 
 ## What works in Sprint 1A
 - MediaProjection consent flow (`ActivityResultContracts.CreateScreenCaptureIntent`)
@@ -26,6 +27,9 @@ see [docs/TESTING_PHYSICAL_DEVICE.md](docs/TESTING_PHYSICAL_DEVICE.md) and
   unsupported-schema refusal, delete-as-escape-hatch
 - Vision Lab tab: frame preview, freeze/resume, explicit processing, interactive annotation
   canvas, text slot editor, profile controls
+- Hero recognition v0 (Sprint 1B, PR #3): hero catalog sync from public static data,
+  explicit Identify action for the selected slot, ranked candidates with similarity scores,
+  manual confirm/correct — **accuracy on real game screens is not measured yet**
 
 ## What is deliberately NOT here (later milestones)
 ML hero recognition, recommendation engine, counter/synergy/role scoring, floating overlays,
