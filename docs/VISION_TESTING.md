@@ -108,9 +108,10 @@ untouched, and that only clearing the document recovers from it.
 | Confirmation store | `datastore/HeroRecognitionStoreTest.kt` | confirm/load/replace/clear, corrupt and future documents read as empty |
 | ViewModel | `feature/visionlab/VisionLabViewModelTest.kt` | identify without slot → message, identify without catalog → FAILED honestly, synced catalog → candidates, confirm → persisted, clear → removed, catalog name search |
 
-Sprint 1B green run (code head): <https://github.com/xeriomy/DraftLens/actions/runs/43731484922>
-— head SHA `7d0c9032a52db8e0f962beea72ceae7120822c88`, **323 unit tests (646 executions,
-debug + release), 0 failures, 0 errors, 0 skipped**. Instrumentation tests compiled, not
-executed. The 1B transport is exercised only through fake responses; no test performs a real
-network call. The number of catalog entries loaded from the live API is measured at device
-sync time, not in CI.
+Sprint 1B green runs: final branch head `b4eac9d856fe049d8d6ae8d232472bd4627c1f4e` —
+<https://github.com/xeriomy/DraftLens/actions/runs/43732111174> (646 executions, debug +
+release, **0 failures, 0 errors, 0 skipped**); code head `7d0c9032a52db8e0f962beea72ceae7120822c88` —
+<https://github.com/xeriomy/DraftLens/actions/runs/43731484922> (same totals). Instrumentation
+tests compiled, not executed. The 1B transport is exercised only through fake responses; no
+test performs a real network call. The number of catalog entries loaded from the live API is
+measured at device sync time, not in CI.

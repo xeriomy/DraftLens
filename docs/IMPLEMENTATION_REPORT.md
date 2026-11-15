@@ -393,9 +393,9 @@ Branch `sprint-1b-hero-recognition`, PR #3 (draft, **not merged**). See
 This sprint does not add recommendations, counters, synergy scoring, a floating overlay,
 or automatic draft-phase detection, and does not merge PR #3 without review.
 
-Sprint 1B green run (code head, 7d0c9032a52db8e0f962beea72ceae7120822c88):
-https://github.com/xeriomy/DraftLens/actions/runs/43731484922 — **323 tests (646 executions),
-0 failures, 0 errors, 0 skipped**; instrumentation tests compiled, not executed; strict lint;
-assembleDebug; artifact `draftlens-debug`, 10 334 760 bytes, digest
-`sha256:122433490a5da130390a8a7b7b1f69eb0040551ca0c7fa82f8bc375f9405741f`, APK SHA-256
-`c0c02f70fd5af56ce3f8e3631dfe5c207a77fa294172ceb473c9a549bbf81ce3`.
+Sprint 1B green runs: final branch head `b4eac9d856fe049d8d6ae8d232472bd4627c1f4e` —
+https://github.com/xeriomy/DraftLens/actions/runs/43732111174 (646 executions, 0 failures);
+code head `7d0c9032a52db8e0f962beea72ceae7120822c88` —
+https://github.com/xeriomy/DraftLens/actions/runs/43731484922 (646 executions, 0 failures).
+Instrumentation tests compiled, not executed; strict lint; assembleDebug; artifact
+`draftlens-debug`, digest `sha256:3c977d55d77c5452425ccfd5ea950ef55722d77319149c076d8bd5d115b85cc9`.
