@@ -194,7 +194,7 @@ class FramePipeline(
         val frame = _latestFrame.value ?: return FreezeResult.NoFrame
         val copy = FrameSnapshots.copyOf(frame) ?: return FreezeResult.NoFrame
         frozen = true
-        Log.i(TAG, "generation=${generation.current()} frame pinned: ${frame.sourceWidth}x${frame.sourceHeight} id=${frame.id.value}")
+        Log.i(TAG, "generation=${generation.current()} frame pinned: ${frame.width}x${frame.height} id=${frame.frame.id.value}")
         FreezeResult.Frozen(copy)
     }
 
