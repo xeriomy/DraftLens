@@ -27,9 +27,10 @@ class FileHeroCatalogRepository(
     override val state: StateFlow<HeroCatalogState> = _state.asStateFlow()
 
     init {
+        // If the cache cannot be decoded this records an Error state and returns null.
         cached = readDiskSnapshot()
-        _state.value = cached?.let { HeroCatalogState.Ready(it.entries.size, it.syncedAtMs) }
-            ?: HeroCatalogState.NotSynced
+        cached?.let { _state.value = HeroCatalogState.Ready(it.entries.size, it.syncedAtMs) }
+        // Otherwise leave whatever readDiskSnapshot put in place (Error), or NotSynced.
     }
 
     override fun snapshot(): CatalogSnapshot? {
