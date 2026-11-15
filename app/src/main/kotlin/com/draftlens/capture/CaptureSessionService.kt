@@ -132,6 +132,11 @@ class CaptureSessionService : Service() {
             }
             ACTION_FREEZE -> {
                 // Never re-promotes, never restarts MediaProjection: no-op without an active pipeline.
+                if (!CaptureFreeze.hasActivePipeline()) {
+                    Log.i(TAG, "Freeze command ignored: no active capture session")
+                    stopSelf() // do not linger for a stale command
+                    return START_NOT_STICKY
+                }
                 when (val outcome = CaptureFreeze.freezeCurrentFrame()) {
                     is FreezeOutcome.Frozen ->
                         Log.i(TAG, "Freeze command honoured (${outcome.frame.width}x${outcome.frame.height})")
@@ -142,7 +147,6 @@ class CaptureSessionService : Service() {
                     FreezeOutcome.NoPipeline -> {
                         Log.i(TAG, "Freeze command ignored: no active capture session")
                         stopSelf() // do not linger for a stale command
-                        return START_NOT_STICKY
                     }
                 }
                 START_NOT_STICKY

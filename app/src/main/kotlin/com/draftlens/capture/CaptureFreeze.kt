@@ -27,6 +27,9 @@ object CaptureFreeze {
         }
     }
 
+    /** True when a pipeline is installed (i.e. capture is running). */
+    fun hasActivePipeline(): Boolean = pipeline != null
+
     fun freezeCurrentFrame(): FreezeOutcome {
         val current = CaptureStateHolder.frozenFrame.value
         if (current != null) return FreezeOutcome.AlreadyFrozen
