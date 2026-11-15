@@ -98,7 +98,7 @@ class HeroMatcherTest {
     @Test fun `hamming distance counts differing bits`() {
         assertEquals(0, HeroMatcher.hammingDistance(0b1010, 0b1010))
         assertEquals(4, HeroMatcher.hammingDistance(0b1010, 0b0101))
-        assertEquals(64, HeroMatcher.hammingDistance(Long.MAX_VALUE, Long.MIN_VALUE + 1))
+        assertEquals(64, HeroMatcher.hammingDistance(Long.MAX_VALUE, Long.MIN_VALUE))
     }
 
     @Test fun `color distance is zero for identical descriptors`() {

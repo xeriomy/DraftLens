@@ -783,7 +783,7 @@ class VisionLabViewModelTest {
 
     @Test fun `identify without a synced catalog fails honestly instead of guessing`() = runBlocking {
         val vm = recognitionVm()
-        vm.createSlot(NormalizedRect(0.1f, 0.1f, 0.3f, 0.3f))
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
 
         vm.identifySelectedSlot()
         eventually(5_000) {
@@ -801,7 +801,7 @@ class VisionLabViewModelTest {
         val vm = recognitionVm()
         vm.syncHeroCatalog()
         eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
-        vm.createSlot(NormalizedRect(0.1f, 0.1f, 0.4f, 0.4f))
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
         val slotId = vm.uiState.value.slots.single().id
 
         vm.identifySelectedSlot()
@@ -816,7 +816,7 @@ class VisionLabViewModelTest {
         val vm = recognitionVm()
         vm.syncHeroCatalog()
         eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
-        vm.createSlot(NormalizedRect(0.1f, 0.1f, 0.4f, 0.4f))
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
         val slotId = vm.uiState.value.slots.single().id
         vm.identifySelectedSlot()
         eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CANDIDATES }
