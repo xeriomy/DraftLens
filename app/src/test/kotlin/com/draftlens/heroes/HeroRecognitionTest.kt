@@ -62,9 +62,9 @@ class HeroRecognitionTest {
     }
 
     @Test fun `evidence below the threshold reports no match instead of a wrong hero`() {
-        val black = IntArray(32 * 32) { 0xFF000000.toInt() }
+        val inverse = inverseGradient(32, 32)
         val outcome = HeroRecognition.identify(
-            pixels = black,
+            pixels = inverse,
             width = 32,
             height = 32,
             references = listOf(miyaReference),
@@ -73,4 +73,23 @@ class HeroRecognitionTest {
 
         assertTrue(outcome is HeroIdentifyOutcome.NoMatch)
     }
+
+    @Test fun `a uniform crop is insufficient information, not a wrong hero nor a no match`() {
+        val black = IntArray(32 * 32) { 0xFF000000.toInt() }
+        val outcome = HeroRecognition.identify(
+            pixels = black,
+            width = 32,
+            height = 32,
+            references = listOf(miyaReference),
+        )
+
+        assertTrue(outcome is HeroIdentifyOutcome.InsufficientVisualInformation)
+    }
+
+    private fun inverseGradient(width: Int, height: Int): IntArray =
+        IntArray(width * height) { i ->
+            val x = i % width
+            val v = 255 - (x * 255 / width)
+            0xFF000000.toInt() or v or (v shl 8) or (v shl 16)
+        }
 }

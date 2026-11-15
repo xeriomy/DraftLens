@@ -976,8 +976,10 @@ class VisionLabViewModelTest {
         vm.identifySelectedSlot()
         eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CANDIDATES }
 
-        // Sabotage the store: remove the directory the preferences document lives in.
+        // Sabotage the store: the directory where the document lives becomes a file,
+        // so the next write cannot succeed no matter what the store recreates.
         dir.deleteRecursively()
+        java.io.File(dir).writeText("file")
         vm.confirmHero(slotId, "miya")
         eventually(5_000) { vm.uiState.value.message?.contains("could not be saved") == true }
 
@@ -997,8 +999,9 @@ class VisionLabViewModelTest {
         vm.confirmHero(slotId, "miya")
         eventually(5_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CONFIRMED }
 
-        // Sabotage the store, then try to clear.
+        // Sabotage the store the same way, then try to clear.
         dir.deleteRecursively()
+        java.io.File(dir).writeText("file")
         vm.clearHeroConfirmation(slotId)
         eventually(5_000) { vm.uiState.value.message?.contains("could not be cleared") == true }
 

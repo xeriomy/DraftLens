@@ -25,8 +25,8 @@ class WriteAtomicallyTest {
     private fun tempDirs(): Pair<File, File> =
         Files.createTempDirectory("hero-catalog").toFile() to Files.createTempDirectory("hero-assets").toFile()
 
-    private fun repo(data: File, cache: File): FileHeroCatalogRepository =
-        FileHeroCatalogRepository(data, cache, EmptyTransport) { 1234L }
+    private fun repo(data: File, cache: File, now: Long = 1234L): FileHeroCatalogRepository =
+        FileHeroCatalogRepository(data, cache, EmptyTransport) { now }
 
     @Test fun `an atomic write stores the exact bytes`() {
         val (data, cache) = tempDirs()
@@ -71,7 +71,7 @@ class WriteAtomicallyTest {
         stale.setLastModified(now - 2 * 60 * 60 * 1000)
         fresh.setLastModified(now - 60 * 1000)
 
-        repo(data, cache)
+        repo(data, cache, now = now)
 
         assertFalse("stale temp files are swept", stale.exists())
         assertTrue("fresh temp files are kept", fresh.exists())
