@@ -5,3 +5,6 @@ local.properties
 *.iml
 .idea/
 .DS_Store
+
+# Superpowers scratch workspace (ledger, briefs, review packages)
+.superpowers/

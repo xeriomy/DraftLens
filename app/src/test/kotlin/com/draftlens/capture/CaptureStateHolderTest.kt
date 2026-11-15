@@ -1,6 +1,8 @@
 package com.draftlens.capture
 
 import com.draftlens.models.CaptureStatus
+import com.draftlens.vision.model.FrameRotation
+import com.draftlens.vision.testCapturedFrame
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -15,7 +17,7 @@ class CaptureStateHolderTest {
         CaptureStateHolder.setStatus(CaptureStatus.AWAITING_PERMISSION)
         CaptureStateHolder.setStatus(CaptureStatus.STARTING)
         CaptureStateHolder.beginCapture(1080, 2400, 440)
-        CaptureStateHolder.recordFrame(capturedFrameNullBitmap())
+        CaptureStateHolder.recordFrame(testCapturedFrame())
 
         CaptureStateHolder.terminateSession()
 
@@ -36,21 +38,36 @@ class CaptureStateHolderTest {
         assertFalse(state.hasPermission)
     }
 
-    private fun capturedFrameNullBitmap() =
-        com.draftlens.models.CapturedFrame(
-            bitmap = null,
-            sampledAtElapsedRealtimeMs = 10_000,
-            wallClockTimestampMs = System.currentTimeMillis(),
-            processingLatencyMs = 12,
-            width = 1080,
-            height = 2400
-        )
+    @Test fun `recordFrame forwards non-null vision frame metadata`() {
+        CaptureStateHolder.setStatus(CaptureStatus.AWAITING_PERMISSION)
+        CaptureStateHolder.setStatus(CaptureStatus.STARTING)
+        CaptureStateHolder.beginCapture(1080, 2400, 440)
+        val frame = testCapturedFrame()
+
+        CaptureStateHolder.recordFrame(frame)
+
+        assertSame(frame, CaptureStateHolder.latestFrame.value)
+        assertSame(frame.frame, frame.toVisionFrame())
+        assertEquals(2, frame.width)
+        assertEquals(2, frame.height)
+        assertEquals(10_000, frame.sampledAtElapsedRealtimeMs)
+        assertEquals(1_700_000_000_000, frame.wallClockTimestampMs)
+        assertEquals(12, frame.processingLatencyMs)
+        assertEquals(FrameRotation.ROTATION_90, frame.displayRotation)
+
+        val state = CaptureStateHolder.state.value
+        assertEquals(1L, state.frameCount)
+        assertEquals(1_700_000_000_000, state.lastFrameWallClockMs)
+        assertEquals(12L, state.lastFrameProcessingLatencyMs)
+        assertEquals(2, state.displayWidth)
+        assertEquals(2, state.displayHeight)
+    }
 
     @Test fun `termination with error preserves message and clears retained frame`() {
         CaptureStateHolder.setStatus(CaptureStatus.AWAITING_PERMISSION)
         CaptureStateHolder.setStatus(CaptureStatus.STARTING)
         CaptureStateHolder.beginCapture(1080, 2400, 440)
-        CaptureStateHolder.recordFrame(capturedFrameNullBitmap())
+        CaptureStateHolder.recordFrame(testCapturedFrame())
 
         CaptureStateHolder.terminateSession("consent revoked")
 
@@ -87,7 +104,7 @@ class CaptureStateHolderTest {
         CaptureStateHolder.setStatus(CaptureStatus.AWAITING_PERMISSION)
         CaptureStateHolder.setStatus(CaptureStatus.STARTING)
         CaptureStateHolder.beginCapture(1080, 2400, 440)
-        val frame = capturedFrameNullBitmap()
+        val frame = testCapturedFrame()
         CaptureStateHolder.recordFrame(frame)
         assertSame(frame, CaptureStateHolder.latestFrame.value)
 
@@ -112,7 +129,7 @@ class CaptureStateHolderTest {
         CaptureStateHolder.setStatus(CaptureStatus.AWAITING_PERMISSION)
         CaptureStateHolder.setStatus(CaptureStatus.STARTING)
         CaptureStateHolder.beginCapture(1080, 2400, 440)
-        CaptureStateHolder.recordFrame(capturedFrameNullBitmap())
+        CaptureStateHolder.recordFrame(testCapturedFrame())
 
         CaptureStateHolder.terminateSession()
 
