@@ -24,24 +24,24 @@ class ReferenceImageValidatorInstrumentedTest {
         0x44.toByte(), 0xAE.toByte(), 0x42.toByte(), 0x60.toByte(), 0x82.toByte(),
     )
 
-    @Test fun `a real png decodes on a device`() {
+    @Test fun realPngDecodesOnDevice() {
         assertTrue(AndroidReferenceImageValidator.isDecodable(realPng))
         assertTrue(StructuralImageValidator.isDecodable(realPng))
     }
 
-    @Test fun `a truncated png does not decode`() {
+    @Test fun truncatedPngDoesNotDecode() {
         val truncated = realPng.copyOf(30)
         assertFalse(AndroidReferenceImageValidator.isDecodable(truncated))
         assertFalse(StructuralImageValidator.isDecodable(truncated))
     }
 
-    @Test fun `an html error page is not an image`() {
+    @Test fun htmlErrorPageIsNotAnImage() {
         val html = "<html><body>502 Bad Gateway</body></html>".toByteArray()
         assertFalse(AndroidReferenceImageValidator.isDecodable(html))
         assertFalse(StructuralImageValidator.isDecodable(html))
     }
 
-    @Test fun `a jpeg that passes the structure check fails the device decode`() {
+    @Test fun jpegPassingStructureCheckFailsDeviceDecode() {
         // Structure check is a first gate (SOI + EOI present); the device adds a real decode.
         val fakeJpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0x01, 0x02, 0x03, 0xFF.toByte(), 0xD9.toByte())
         assertTrue(StructuralImageValidator.isDecodable(fakeJpeg))

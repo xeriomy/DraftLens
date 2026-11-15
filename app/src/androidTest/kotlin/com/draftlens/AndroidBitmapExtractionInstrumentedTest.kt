@@ -80,7 +80,7 @@ class AndroidBitmapExtractionInstrumentedTest {
         20, 21, 22, 23, 24,
     )
 
-    @Test fun `all four rotations produce the exact expected pixels for a non-square crop`() {
+    @Test fun allFourRotationsProduceExactExpectedPixels() {
         val rect = NormalizedRect(0f, 0f, 1f, 1f)
         val expected = mapOf(
             FrameRotation.ROTATION_0 to Triple(3, 2, intArrayOf(10, 11, 12, 20, 21, 22)),
@@ -102,7 +102,7 @@ class AndroidBitmapExtractionInstrumentedTest {
         }
     }
 
-    @Test fun `crops touching the top and bottom edges extract exactly the edge columns`() {
+    @Test fun topBottomEdgeCropsExtractExactlyThosePixels() {
         val rect = NormalizedRect(0.2f, 0f, 0.6f, 1f) // left=1px, right=3px of 5
         val expected = mapOf(
             FrameRotation.ROTATION_0 to Triple(2, 3, intArrayOf(1, 2, 11, 12, 21, 22)),
@@ -123,7 +123,7 @@ class AndroidBitmapExtractionInstrumentedTest {
         }
     }
 
-    @Test fun `a crop on the bottom and right edges extracts exactly those pixels`() {
+    @Test fun bottomRightEdgeCropExtractsExactlyThosePixels() {
         val rect = NormalizedRect(0.6f, 1f / 3f, 1f, 1f) // left=3px, top=1px of 5x3
         val expected = mapOf(
             FrameRotation.ROTATION_0 to Triple(2, 2, intArrayOf(13, 14, 23, 24)),
@@ -144,7 +144,7 @@ class AndroidBitmapExtractionInstrumentedTest {
         }
     }
 
-    @Test fun `a payload whose bitmap dimensions do not match the source is refused`() {
+    @Test fun payloadDimensionMismatchIsRefused() {
         val bitmap = track(Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888))
         val frame = OriginalFrame(
             id = FrameId("mismatch"),
@@ -164,7 +164,7 @@ class AndroidBitmapExtractionInstrumentedTest {
         assertTrue(result.exceptionOrNull()!!.message!!.contains("does not match"))
     }
 
-    @Test fun `the source bitmap stays valid and unchanged after extraction`() {
+    @Test fun sourceBitmapStaysValidAfterExtraction() {
         val source = frame(4, 3, FrameRotation.ROTATION_90, edgeFrame.copyOf())
         val bitmap = (source.payload as BitmapFramePayload).bitmap
         val before = IntArray(edgeFrame.size).also { bitmap.getPixels(it, 0, 4, 0, 0, 4, 3) }
@@ -177,7 +177,7 @@ class AndroidBitmapExtractionInstrumentedTest {
         assertArrayEquals("the source pixels must be unchanged", before, after)
     }
 
-    @Test fun `the minimum valid crop produces exactly one pixel`() {
+    @Test fun minimumValidCropProducesOnePixel() {
         val source = frame(128, 128, FrameRotation.ROTATION_0, IntArray(128 * 128) { it })
         val result = AndroidBitmapSlotImageExtractor.extract(
             source,
@@ -191,7 +191,7 @@ class AndroidBitmapExtractionInstrumentedTest {
         assertEquals(16 * 128 + 16, pixels.single())
     }
 
-    @Test fun `a rectangle smaller than one pixel is refused`() {
+    @Test fun subPixelRectangleIsRefused() {
         val source = frame(10, 10, FrameRotation.ROTATION_0, IntArray(100) { 7 })
 
         val result = AndroidBitmapSlotImageExtractor.extract(source, slot(NormalizedRect(0f, 0f, 0.05f, 0.05f)))
@@ -199,7 +199,7 @@ class AndroidBitmapExtractionInstrumentedTest {
         assertTrue(result.isFailure)
     }
 
-    @Test fun `a recycled source bitmap is refused without a crash`() {
+    @Test fun recycledSourceBitmapIsRefused() {
         val source = frame(4, 3, FrameRotation.ROTATION_0, edgeFrame.copyOf())
         val bitmap = (source.payload as BitmapFramePayload).bitmap
         bitmap.recycle()
@@ -209,7 +209,7 @@ class AndroidBitmapExtractionInstrumentedTest {
         assertTrue(result.isFailure)
     }
 
-    @Test fun `a bitmap frame snapshot shares no pixels with the pipeline copy`() {
+    @Test fun bitmapSnapshotSharesNoPixelsWithPipeline() {
         val original = frame(4, 2, FrameRotation.ROTATION_0, asymmetric.copyOf())
         val snapshot = FrameSnapshots.copyOf(original)
 
