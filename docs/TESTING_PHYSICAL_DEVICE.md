@@ -51,5 +51,6 @@ Status values: **PASS**, **FAIL**, **PARTIAL**, **NOT RUN**. Record the commit S
 - For failures: full exception and steps immediately before it
 
 ## CI scope
-CI runs JVM unit tests, lint, APK assembly and merged-manifest inspection. An `instrumented`
-job runs the instrumentation suite on an emulator. Neither substitutes for this checklist.
+CI runs JVM unit tests, lint, APK assembly and merged-manifest inspection; instrumentation
+tests compile but do not execute (no KVM on the runner — see `docs/VISION_TESTING.md`).
+Neither substitutes for this checklist.

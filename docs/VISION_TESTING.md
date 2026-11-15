@@ -2,34 +2,13 @@
 
 ## Where the tests run
 
-GitHub Actions is the build of record for this sprint.
+GitHub Actions is the build of record for this sprint. The authoring host is aarch64 and
+AGP 8.6.1's `aapt2` is x86_64-only, so nothing that touches resources can be assembled
+there. The current, authoritative verification record for this branch is the
+**Sprint 1B review-fix pass** section below (run `43742933328`); the older Sprint 1A/1B run
+records further down remain as history.
 
-The authoring host is **aarch64**, and AGP 8.6.1 publishes only an **x86_64** `aapt2` — the
-binary that compiles and links resources. No Gradle task that touches resources can run
-there; the failure is `Cannot run program ".../aapt2": error=2`. Installing an x86_64 SDK,
-emulating it, or writing a second build system would each cost more than they are worth, so
-every verification below ran in CI on `ubuntu-latest` (x86_64) with JDK 17, the same
-`./gradlew` tasks a developer would run locally.
-
-Workflow: `.github/workflows/build.yml`, triggered by `pull_request`.
-
-```sh
-./gradlew test --stacktrace              # JVM unit tests
-./gradlew assembleAndroidTest --stacktrace   # instrumentation sources compile
-./gradlew lint --stacktrace              # strict lint, abortOnError = true
-./gradlew assembleDebug --stacktrace     # debug APK
-```
-
-The run also prints the unit-test totals and uploads the APK as the `draftlens-debug`
-artifact, then re-reads the packaged manifest to confirm the foreground-service permissions
-and the `mediaProjection` service type survived the build.
-
-Latest green run: <https://github.com/xeriomy/DraftLens/actions/runs/43643640990>
-— head SHA `5ffb0c193cb84da77fb49984c81e219178c7ef3f`, **269 unit tests, 0 failures, 0 errors,
-0 skipped**, executed in both the debug and the release unit-test variants (538 test
-executions in total).
-
-The APK artifact digest is reported in the implementation report and in the pull request.
+See the sections below for the exact commands CI runs.
 
 ## Test inventory
 
@@ -95,24 +74,96 @@ mismatches, oversized output, unsupported formats and render errors all produce 
 calibration suites assert that an unsupported or corrupt document is reported and left
 untouched, and that only clearing the document recovers from it.
 
-## Sprint 1B tests (inventory)
+## Sprint 1B review-fix pass (this revision)
+
+GitHub Actions is the build of record. The authoring host is **aarch64**, and AGP 8.6.1
+publishes only an **x86_64** `aapt2`, so nothing that touches resources can be assembled
+locally; every verification below ran in CI on `ubuntu-latest` (x86_64) with JDK 17.
+
+Workflow: `.github/workflows/build.yml` (one `build` job), triggered by `pull_request`
+(and pushes to `main`/`master`).
+
+Latest green run: <https://github.com/xeriomy/DraftLens/actions/runs/43743834524>
+— head SHA `f3ea76983b88a591956564e37003b6fb7e6c95ca`:
+
+- **Unit tests: 792 executions (debug + release), 0 failures, 0 errors, 0 skipped.**
+- `assembleAndroidTest` — instrumentation sources compile.
+- strict `lint` (`abortOnError = true`) — green.
+- `assembleDebug` — green; artifact `draftlens-debug`, 10 362 310 bytes,
+  digest `sha256:55919144b62e5ca128c72cb6fb404a22f9fa6c5762ecb1180400f70ea6734826`.
+
+The instrumentation suite is **compiled but not executed**. The CI runner has no KVM
+access: the default API-30 image does not boot within the runner's timeout, and the
+`aosp_atd` image boots but is reported to Gradle as an "Unknown API Level" and is skipped
+(`Skipping device 'emulator-5554' ... No compatible devices connected`). Instrumented
+tests must be run on a physical device or an emulator with KVM (see
+`docs/TESTING_PHYSICAL_DEVICE.md`); they are not claimed as executed anywhere.
+
+The run also re-reads the packaged manifest to confirm the foreground-service permissions
+and the `mediaProjection` service type survived the build.
+
+## Test inventory (Sprint 1B additions)
 
 | Suite | File | Covers |
 |---|---|---|
-| Hero catalog sync | `heroes/HeroCatalogSyncTest.kt` | pagination to the reported total, mirror fallback, non-zero API code, duplicate-ID collapse, invalid-record skip, MLBBDex cross-check match/unavailable, roles/lanes by slug |
-| Hero catalog codec | `heroes/HeroCatalogCodecTest.kt` | snapshot round-trip, schema refusal, blank id/name, non-HTTPS asset URL, unknown fields |
-| Hero catalog repository | `heroes/FileHeroCatalogRepositoryTest.kt` | refresh stores snapshot + assets, atomic cache, offline restart, corrupt cache error, asset magic-byte/content-type/size validation, refresh failure keeps cache |
-| Slot extraction | `heroes/SlotImageExtractorTest.kt` | portrait/landscape, 0/90/180/270 upright output, edge-touching and minimum-size rectangles, below-one-pixel rejection, payload mismatch, source untouched |
-| Matcher | `heroes/HeroMatcherTest.kt` | identical images match, ranking order, no-match threshold, ambiguous gap, corrupt references skipped, hamming/color distance, determinism |
-| Recognition orchestration | `heroes/HeroRecognitionTest.kt` | candidates path, no usable references → failure, no-match path |
-| Confirmation store | `datastore/HeroRecognitionStoreTest.kt` | confirm/load/replace/clear, corrupt and future documents read as empty |
-| ViewModel | `feature/visionlab/VisionLabViewModelTest.kt` | identify without slot → message, identify without catalog → FAILED honestly, synced catalog → candidates, confirm → persisted, clear → removed, catalog name search |
+| Pixel extraction | `heroes/SlotImageExtractorTest.kt` | asymmetric 3x2/5x3 fixtures, exact pixel order for all four rotations (hand-computed), edge-touching crops, minimum-size and refused crops, source immutability |
+| Matcher | `heroes/HeroMatcherTest.kt` | identical images match, ranking, no-match threshold, ambiguous gap, corrupt references skipped, determinism |
+| Recognition orchestration | `heroes/HeroRecognitionTest.kt` | candidates path, unusable references → failure, below-threshold → no-match (inverse-gradient fixture), uniform crop → `InsufficientVisualInformation` |
+| Visual information | `heroes/VisualInformationTest.kt` | uniform gray/black/white, saturated solids, near-uniform noise, low-resolution crops, smooth & low-contrast gradients (not rejected), textured & pseudo-random detail (accepted), dimension mismatch, end-to-end blank → `InsufficientVisualInformation`, `NoMatch` kept distinct |
+| Catalog sync | `heroes/HeroCatalogSyncTest.kt` | unchanged behaviour (pagination, mirror, duplicates, cross-check) |
+| Catalog repository | `heroes/FileHeroCatalogRepositoryTest.kt` | snapshot + assets, offline restart, **unchanged URL → no re-download**, **URL change → re-download & new asset served**, **URL change + failed refresh → old asset not exposed**, **corrupt file → not served + re-downloaded**, metadata forgery rejected, missing/corrupt sidecar → re-download, oversized cached file rejected, truncated/HTML-as-PNG rejected, null content-type accepted, oversized download rejected, fresh assets served via network outage |
+| Atomic writes | `heroes/WriteAtomicallyTest.kt` | exact-bytes write, failure leaves a directory target untouched and removes the temp file, blocked parent reports failure without touching it, hourly `*.tmp` sweep on init, no temp leftovers on a failed refresh |
+| Redirect policy | `heroes/HeroRedirectPolicyTest.kt` | HTTPS targets accepted (absolute/relative), HTTPS→HTTP downgrade refused, non-HTTP schemes refused, missing/blank/over-long targets refused |
+| Structural validator | `heroes/StructuralImageValidatorTest.kt` | real PNG passes, truncation/CRC corruption/HTML fail, GIF/WebP framing checks |
+| Freeze flow (JVM) | `capture/CaptureFreezeTest.kt` | freeze without an active capture → `NoPipeline`; resume drops the pin; a duplicate freeze keeps the original frame |
+| Freeze flow (JVM) | `capture/CaptureStateHolderTest.kt` | pinned frame survives `terminateSession` (stop and error), new session drops it, clear drops it, reset drops it |
+| Freeze flow (JVM) | `models/FrameSnapshotsTest.kt` | copy preserves dimensions/rotation/timestamps/id, pixel values equal, caller-array mutation does not affect the copy, capture latency wrapper preserved |
+| Vision source | `capture/CaptureVisionFrameSourceTest.kt` | adapter publishes capture-side frozen frames; freeze with no capture → false; resume is a safe no-op |
+| ViewModel | `feature/visionlab/VisionLabViewModelTest.kt` | **capture-side freeze shows the pinned frame while newer live frames keep arriving**, resume reveals live frames again, freeze with no frame reports honestly, uniform-gray Frame produces `INSUFFICIENT_INFO` instead of candidates, inverse-gradient → `NO_MATCH`, confirmation/correct of candidates works, direct correction without clearing first, **confirm/clear persistence failure reported, never shown as success** |
+| Instrumentation | `androidTest/.../AndroidBitmapExtractionInstrumentedTest.kt` | all four rotations pixel-exact (asymmetric non-square fixtures), edge crops, payload/source dimension mismatch refused, source Bitmap valid after extraction, minimum-size and refused crops, recycled Bitmap refused, bitmap snapshot copies pixels independently |
+| Instrumentation | `androidTest/.../ReferenceImageValidatorInstrumentedTest.kt` | real PNG decodes on device, truncated PNG and HTML do not decode, JPEG structure-vs-decode layering |
+| Instrumentation | `androidTest/.../CaptureLifecycleInstrumentedTest.kt` | manifest declares the service, `mediaProjection` foreground type, required permissions |
 
-Sprint 1B green runs: latest branch head `e58611c25d7d9a40592aa3d81ad3347869771cc3` (class-scoped
-test Main, test-only) —
-<https://github.com/xeriomy/DraftLens/actions/runs/43732908605> (646 executions, debug +
-release, **0 failures, 0 errors, 0 skipped**); prior green heads `b4eac9d856fe049d8d6ae8d232472bd4627c1f4e`
-(run 43732111174) and `7d0c9032a52db8e0f962beea72ceae7120822c88` (run 43731484922), same totals. Instrumentation
-tests compiled, not executed. The 1B transport is exercised only through fake responses; no
-test performs a real network call. The number of catalog entries loaded from the live API is
-measured at device sync time, not in CI.
+## Fixture policy
+
+- **Synthetic images only.** No real game screenshots, no captured frames, no image assets are
+  committed. Fixtures are generated pixel arrays or the built-in 1x1 red/green PNGs
+  (`com.draftlens.vision.testRealPng()` / `testRealGreenPng()`), which are real, decodable
+  containers with correct CRCs.
+- The calibration store test writes to a temporary directory under the system temp folder and
+  removes it afterwards.
+
+## What is not covered
+
+- **Instrumentation tests: compiled, not executed.** `assembleAndroidTest` proves the
+  instrumentation sources compile; nothing ran them. The CI runner has no KVM access: the
+  default API-30 image did not boot within the runner's timeout, and the `aosp_atd` image
+  boots but is skipped as "Unknown API Level" by Gradle. Two consecutive attempts failed
+  for these reasons, so the emulator job was removed rather than left flaky. Instrumented
+  tests must be executed on a physical device or a KVM-enabled emulator before the PR is
+  marked verified; none of their results are claimed as executed here.
+- **Physical-device smoke of the freeze workflow: pending.** The manual lifecycle matrix
+  in `docs/TESTING_PHYSICAL_DEVICE.md` (rows 14–22) covers the notification freeze, the
+  FROZEN/Resume cycle, duplicate taps, disabled notifications and stop-with-frozen-frame.
+  None of it has been run on a device.
+- **MediaProjection lifecycle matrix remains NOT RUN** (rows 2–11).
+- **On-device recognition accuracy: not measured.** The no-match threshold and the matcher
+  weights are uncalibrated; the visual-information heuristics are conservative starting
+  points, not MLBB-calibrated thresholds. Real-screen evaluation and calibration remain
+  pending; see `docs/sprints/SPRINT_1B_HERO_RECOGNITION.md` § Known limitations.
+- **Catalog entries actually loaded** are measured at device sync time; not recorded here.
+- Compose screens are not UI-tested (no compose-ui-test dependency exists in this project);
+  the interaction model is covered by the interaction state-machine tests.
+- The service-level notification action (`ACTION_FREEZE` delivery through
+  `onStartCommand`) is exercised only through the JVM-level `CaptureFreeze`/`CaptureStateHolder`
+  paths and manual device verification; no instrumented test taps the system notification.
+
+## Honest failure behaviour
+
+The suites assert that failures are reported rather than hidden: invalid dimensions, payload
+mismatches, oversized output, unsupported formats and render errors produce a
+`ProcessFrameResult.Failure` with a reason code; unsupported/corrupt calibration documents
+are reported and untouched; a failed cache download never replaces a good asset and never
+serves a stale one under a changed URL; a failed persistence operation is reported, not
+hidden behind a success state. The instrumentation suite covers the Android-only paths
+(bitmap extraction, decode validation, manifest).

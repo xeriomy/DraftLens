@@ -115,5 +115,5 @@ PASS** (device details not supplied). The MediaProjection lifecycle matrix is **
       URL change forces re-download; failed refresh keeps previous asset; HTTPS-only redirects)
 - [x] Part G: atomic snapshot/asset writes; failure preserves previous snapshot; temp files swept
 - [x] Part H: reference Bitmap dims read before recycling
-- [ ] CI green on the final head; instrumented job result recorded honestly
+- [ ] CI green on the final head (instrumentation compiled, not executed — no KVM on the runner)
 - [ ] Physical-device smoke test and on-device accuracy evaluation (pending)

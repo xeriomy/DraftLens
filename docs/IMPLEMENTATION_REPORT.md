@@ -375,27 +375,119 @@ Note: invocation `./gradlew assembleDebug` is intentionally not claimed locally;
 - OEM/background/store policies and review gates remain for release
 - Physical-device matrix needs execution before store release
 
-## Sprint 1B — hero recognition (in progress)
+## Sprint 1B — review fixes and game-frame freeze (current)
 
-Branch `sprint-1b-hero-recognition`, PR #3 (draft, **not merged**). See
-`docs/sprints/SPRINT_1B_HERO_RECOGNITION.md` for the full report, including:
+Branch `sprint-1b-hero-recognition`, PR #3 (draft, **not merged**). The full report is
+`docs/sprints/SPRINT_1B_HERO_RECOGNITION.md`; this section records what changed for the
+review-fix pass and how it was verified.
 
-- provider-independent hero catalog (Rone Arena primary, MLBBDex cross-check/roles/lanes),
-  atomic file snapshot with offline browsing, HTTPS-only transport;
-- slot extraction from the annotation canvas (all four rotations, edge cases pinned by tests);
-- recognition v0 (dHash + 3×3 normalized color descriptor), labeled similarity, explicit no-match,
-  manual confirmation and correction, per-slot persistence;
-- **accuracy on real MLBB screens is not measured**; the no-match threshold is a starting
-  default, not a calibration; physical-device smoke is pending.
-- Only static public hero catalog data and reference images are downloaded. Frames and crops
-  never leave the device; nothing is written to disk automatically.
+### Changes made
 
-This sprint does not add recommendations, counters, synergy scoring, a floating overlay,
-or automatic draft-phase detection, and does not merge PR #3 without review.
+- **Part A — Freeze from the notification.** New `CaptureFreeze` bridge (service command +
+  in-app button are one code path). The ongoing capture notification now exposes
+  **Freeze current frame** (LIVE state) / **Resume live capture** (FROZEN state) plus
+  **Stop**. The command goes to the running service via an explicit, immutable
+  `PendingIntent.getService` (`ACTION_FREEZE` / `ACTION_RESUME_LIVE`); it never launches an
+  Activity, never re-promotes the service, never re-requests consent and never creates a
+  VirtualDisplay. `FramePipeline` gates publication on a `freezeGate` lock shared with the
+  image listener: while frozen, images are still acquired and closed (the reader stays
+  healthy) but not converted or published; a freeze that lands mid-conversion wins and the
+  in-flight frame is dropped. `FrameSnapshots.copyOf` copies pixels (bitmap `copy()` or
+  `IntArray.copyOf`) preserving dimensions, rotation, display rotation, timestamps and the
+  capture-latency metadata; the live pipeline never shares a payload buffer with a
+  snapshot; only one frozen frame is kept; a new capture session drops it; an Android-initiated
+  stop keeps it in process memory for editing (not across process death). The Vision Lab
+  in-app Freeze/Resume went through the same path. Guidance for full-device capture is in
+  the capture screen, the Vision Lab card and the README; `POST_NOTIFICATIONS` is checked
+  and surfaced (request on Android 13+, settings deep-link otherwise); the notification is
+  re-posted whenever the frozen state changes.
+- **Part B — Pixel rotation fixed.** `PixelSlotImageExtractor` now follows
+  `FrameTransform.sourceToOriented()` exactly; tests rewritten with asymmetric non-square
+  fixtures and hand-computed expected pixel orders for all four rotations, crops touching
+  every edge, minimum-size and refused rectangles, and source-immutability checks.
+- **Part C — Android extractor.** Validates Bitmap dimensions against
+  `OriginalFrame.sourceWidth/sourceHeight`; rotation rewritten to pixel-exact mappings;
+  source Bitmap never mutated/recycled; every temporary created in `extract()` is recycled
+  exactly once; failures recycle their temporaries. Instrumented tests added (all four
+  rotations, non-square edge crops, payload mismatch, source validity, minimum sizes,
+  recycled-bitmap refusal, bitmap snapshot ownership).
+- **Part D — Blank rejection.** New pure-Kotlin `VisualInformationAnalyzer` (luma/color
+  variance, edge density, meaningful differences, minimum dimension 12×12) runs before
+  matching. Deterministic, no Android APIs. New distinct outcome
+  `InsufficientVisualInformation` and `INSUFFICIENT_INFO` UI state with
+  "Not enough visual information. Select a clearer hero crop." — uniform/near-uniform/
+  detail-free crops never produce candidates. Thresholds are conservative heuristics,
+  documented as uncalibrated for MLBB.
+- **Part E — Manual correction everywhere.** Manual name search and confirmation are now
+  reachable from CANDIDATES, NO_MATCH, FAILED, INSUFFICIENT_INFO and CONFIRMED.
+  **Change…** in CONFIRMED opens the manual correction search instead of re-running
+  Identify; a candidate can be corrected without clearing first. Failed persistence
+  operations are reported and never shown as success (confirm already reported; clear did
+  not — fixed with tests).
+- **Part F — Cache freshness.** Per-asset `*.meta` sidecar records source URL, SHA-256,
+  size, content type. Serve-time validation: size cap 4 MiB, sidecar URL == catalog URL,
+  size and SHA-256 match, magic bytes, container structure (PNG chunks + CRCs, JPEG/GIF
+  trailers, WebP RIFF), content type, plus a real `BitmapFactory` decode on Android
+  (`AndroidReferenceImageValidator`, wired in `DraftLensApp`). Changed URLs force
+  re-download; the old asset is never served under a changed URL; a failed refresh keeps
+  the previous asset (unchanged URL) and never exposes it as the new one. Redirects are
+  followed manually with per-hop HTTPS re-validation (`HeroRedirectPolicy`); HTTP
+  downgrades and non-HTTP schemes refused. Snapshot writes flush/sync and `ATOMIC_MOVE`.
+- **Part G — Atomic persistence.** `writeAtomically()` is now: temp sibling in the same
+  directory → flush + `FileDescriptor.sync()` (best effort) → `Files.move(ATOMIC_MOVE,
+  REPLACE_EXISTING)` → on any failure the temp file is deleted and the previous target is
+  preserved. No direct-write fallback. Stale `*.tmp` siblings older than an hour are swept
+  on init. Failure-path tests added.
+- **Part H — Reference loader.** Dimensions are read before recycling; pixel reads
+  complete before release; exceptional paths recycle.
+- **Part I — Matcher honesty.** The matcher remains clearly labelled a prototype ranking
+  baseline; weights and the 0.55 threshold are marked uncalibrated; an honest evaluation
+  section (synthetic fixtures, blank rejection, top-1/top-3 methodology, false-match
+  methodology, real-screen status, known limitations) is in the Sprint 1B report. No
+  production-accuracy or probability claims anywhere.
+- **Part J — Scope.** Sprint 1A behavior preserved as-is (compact X delete control, 450 ms
+  long-press, early-drag cancellation, paste semantics, fullscreen without zoom/fit, gesture
+  isolation, portrait/landscape rendering, MediaProjection lifecycle apart from the freeze
+  integration).
+- **Part K — Verification.** See the exact run below. Instrumented tests run on an
+  emulator job when available.
 
-Sprint 1B green runs: latest branch head `e58611c25d7d9a40592aa3d81ad3347869771cc3` —
-https://github.com/xeriomy/DraftLens/actions/runs/43732908605 (646 executions, 0 failures);
-code head `7d0c9032a52db8e0f962beea72ceae7120822c88` —
-https://github.com/xeriomy/DraftLens/actions/runs/43731484922 (same totals).
-Instrumentation tests compiled, not executed; strict lint; assembleDebug; artifact
-`draftlens-debug`, digest `sha256:3c977d55d77c5452425ccfd5ea950ef55722d77319149c076d8bd5d115b85cc9`.
+### Verification actually performed (this revision)
+
+- **Unit tests, debug and release: 792 executions, 0 failures, 0 errors, 0 skipped** —
+  <https://github.com/xeriomy/DraftLens/actions/runs/43743834524>,
+  head SHA `f3ea76983b88a591956564e37003b6fb7e6c95ca`.
+- strict `lint` (abortOnError = true) — green; `assembleDebug` — green; public artifact
+  `draftlens-debug` 10 362 310 bytes, digest
+  `sha256:55919144b62e5ca128c72cb6fb404a22f9fa6c5762ecb1180400f70ea6734826`.
+- `assembleAndroidTest` — instrumentation sources compile; **the suite was not executed**.
+  The CI runner has no KVM access: the default API-30 image did not boot within the
+  timeout, and the `aosp_atd` image boots but Gradle reports it as an "Unknown API Level"
+  and skips it. The emulator job was removed rather than left flaky; instrumented tests
+  must run on a physical device or a KVM-enabled emulator. Nothing here is claimed as
+  executed.
+
+### Claims NOT made
+
+- No production-grade recognition, no calibrated confidence, no MLBB accuracy claim, no
+  accuracy-based-on-synthetic-fixtures claim. The threshold and weights are uncalibrated.
+- No physical-device freeze verification yet (rows 14–22 in
+  `docs/TESTING_PHYSICAL_DEVICE.md`). Device model, install source, test date and logs are
+  not recorded; the MediaProjection lifecycle matrix remains NOT RUN.
+- The instrumentation suite does not and cannot simulate the consent UI; the notification
+  action end-to-end (tap in the shade while the game is foreground) needs a device.
+- No screenshots or captured frames are committed; none were uploaded anywhere.
+
+### Remaining acceptance criteria
+
+- Physical-device smoke of the freeze workflow (notification tap while MLBB is foreground;
+  Vision Lab displays the pinned frame; Resume returns to live frames; stop keeps the pinned
+  frame for editing).
+- On-device accuracy evaluation with manually labeled samples; threshold and
+  visual-information-heuristic calibration against real captures.
+- Catalog entries loaded at device sync time recorded here when a device sync happens.
+- PR #3 stays Draft and unmerged; do not merge without this verification.
+
+Historical green runs from before the review-fix pass (kept as history; do not cite these
+as the current verification): `e58611c` — run 43732908605 (646 executions); `7d0c903` — run
+43731484922 (same totals).

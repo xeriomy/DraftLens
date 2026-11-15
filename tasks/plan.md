@@ -166,9 +166,9 @@ No recommendation features, no overlays, no automation, PR stays draft and unmer
       no direct-write fallback; failures preserve the previous target; `*.tmp` swept
 - [x] Part H: reference loader reads dimensions before recycling; pixels read before release;
       exceptional paths recycle too
-- [ ] CI green on the final head (unit tests, lint, assembleDebug, assembleAndroidTest,
-      instrumented job on the emulator)
-- [ ] Physical-device smoke of the notification freeze workflow; on-device accuracy
+- [ ] CI green on the final head; instrumentation suite remains compiled-not-executed
+      (no KVM on the runner) — needs a device or KVM-enabled emulator
+- [ ] Physical-device smoke of the freeze workflow; on-device accuracy
       evaluation; real-screen threshold and heuristic calibration
 
 ### Sprint 1B verification
