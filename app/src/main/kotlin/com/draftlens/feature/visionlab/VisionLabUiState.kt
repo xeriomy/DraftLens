@@ -3,6 +3,8 @@ package com.draftlens.feature.visionlab
 import com.draftlens.vision.annotation.DraftSlot
 import com.draftlens.vision.annotation.SlotIssue
 import com.draftlens.vision.calibration.CalibrationLoadResult
+import com.draftlens.vision.heroes.HeroCandidate
+import com.draftlens.vision.heroes.HeroCatalogState
 import com.draftlens.vision.model.OriginalFrame
 import com.draftlens.vision.model.ProcessedFrame
 import com.draftlens.vision.model.VisionSourceState
@@ -11,7 +13,8 @@ import com.draftlens.vision.model.VisionSourceState
 enum class ProcessStatus { IDLE, RUNNING, SUCCESS, FAILED }
 
 /**
- * Everything the Vision Lab renders. No detection data: this sprint has no recognizer.
+ * Everything the Vision Lab renders. Recognition runs only on the user's explicit
+ * Identify action; nothing here is a continuous detection.
  */
 data class VisionLabUiState(
     val liveFrame: OriginalFrame? = null,
@@ -35,6 +38,12 @@ data class VisionLabUiState(
     val canRedo: Boolean = false,
     /** True while the fullscreen annotation editor is open. */
     val fullscreenEditor: Boolean = false,
+    /** The hero catalog state as the UI shows it. */
+    val heroCatalog: HeroCatalogState = HeroCatalogState.NotSynced,
+    /** Recognition state per slot id. Only slots the user ran Identify on appear here. */
+    val heroRecognition: Map<String, HeroSlotUiState> = emptyMap(),
+    /** The extracted crop for preview; Android only, null for synthetic payloads. */
+    val heroPreview: android.graphics.Bitmap? = null,
 ) {
     /** The frame the canvas draws: the pinned one when frozen, otherwise the live one. */
     val displayFrame: OriginalFrame? get() = frozenFrame ?: liveFrame
@@ -48,3 +57,21 @@ data class VisionLabUiState(
         const val DEFAULT_MAX_PROCESSED_DIMENSION = 1280
     }
 }
+
+/** Phase of a slot's hero recognition flow. */
+enum class HeroSlotPhase { IDLE, PROCESSING, CANDIDATES, NO_MATCH, CONFIRMED, FAILED }
+
+/** Recognition state of one slot. */
+data class HeroSlotUiState(
+    val phase: HeroSlotPhase,
+    /** Ranked candidates; meaningful only in [HeroSlotPhase.CANDIDATES]. */
+    val candidates: List<HeroCandidate> = emptyList(),
+    /** Best similarity seen in [HeroSlotPhase.NO_MATCH]; null elsewhere. */
+    val bestSimilarity: Float? = null,
+    /** User-facing message for [HeroSlotPhase.FAILED]; also used for the confirmed hero's name in [HeroSlotPhase.CONFIRMED]. */
+    val message: String? = null,
+    /** The confirmed hero id in [HeroSlotPhase.CONFIRMED]. */
+    val confirmedHeroId: String? = null,
+    /** Wall-clock confirmation time in [HeroSlotPhase.CONFIRMED]. */
+    val confirmedAtMs: Long? = null,
+)

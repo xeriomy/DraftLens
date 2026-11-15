@@ -56,6 +56,8 @@ class MainActivity : ComponentActivity() {
                     else -> VisionLabScreen(
                         calibrationRepository = app.calibrationProfiles,
                         source = app.visionSource,
+                        heroCatalog = app.heroCatalog,
+                        heroRecognitionStore = app.heroRecognitionStore,
                     )
                 }
             }
