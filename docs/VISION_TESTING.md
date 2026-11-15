@@ -40,6 +40,11 @@ See the sections below for the exact commands CI runs.
 | Models | `models/CaptureSessionStateTest.kt`, `permissions/ProjectionPermissionTest.kt` | state machine transitions, consent intent |
 | Detection stubs | `detection/DetectionStubsTest.kt` | the Sprint 0 seams still report `NotImplemented` and never fake a result |
 
+| Plane/stride conversion | `capture/RgbaPlaneCopyTest.kt` | landscape 2400x1080 & portrait 1080x2400 exact pixels, non-square frames, padded rows (full-pixel pads and one-pixel pads), offset & edge-touching `cropRect`s, `cropRect` smaller than the frame (letterbox), pixelStride 4/8, big-endian buffers, caller-buffer position independence, malformed inputs refused, full-crop equals direct read |
+| Generation counter | `capture/GenerationCounterTest.kt` | generations monotonic, stale after bump, frozen resume does not advance it |
+| Display policy | `capture/DisplayChangePolicyTest.kt` | portrait↔landscape always a size-swap resize, identical resize callbacks idempotent |
+| Instrumentation | `androidTest/.../FramePipelineInstrumentedTest.kt` | pipeline starts/resizes with new surface and generation bump, freeze with no frames keeps the reader alive, stop releases the surface |
+
 ## Fixture policy
 
 - **Synthetic images only.** No real game screenshots, no captured frames, no image assets are
@@ -85,14 +90,15 @@ Workflow: `.github/workflows/build.yml` (one `build` job), triggered by `pull_re
 
 Docs-only commits after the code freeze do not change the build; the exact final head and its CI run are recorded in PR #3's description.
 
-Latest green run: <https://github.com/xeriomy/DraftLens/actions/runs/43745075261>
-— head SHA `7a839d1422ee5ba53f65a78ef746d323091d3b40`:
+Latest green run: <https://github.com/xeriomy/DraftLens/actions/runs/43773398149>
+— head SHA `5252016cd15c824009368e831ed499f24209980d` (docs-only commits after the code freeze
+are not part of the 840-tests green state; PR #3's description records the final head).
 
-- **Unit tests: 792 executions (debug + release), 0 failures, 0 errors, 0 skipped.**
+- **Unit tests: 840 executions (debug + release), 0 failures, 0 errors, 0 skipped.**
 - `assembleAndroidTest` — instrumentation sources compile.
 - strict `lint` (`abortOnError = true`) — green.
-- `assembleDebug` — green; artifact `draftlens-debug`, 10 362 309 bytes,
-  digest `sha256:53c07492517fdfc2837ebb179393e526d6b397db2146228aa853eb4914221677`.
+- `assembleDebug` — green; artifact `draftlens-debug`, 10 369 786 bytes,
+  digest `sha256:c46580570a85054f225bd4d927350b153991f98956b1e3ee9a877d5ed9c1b3f1`.
 
 The instrumentation suite is **compiled but not executed**. The CI runner has no KVM
 access: the default API-30 image does not boot within the runner's timeout, and the

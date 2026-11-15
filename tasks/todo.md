@@ -120,7 +120,7 @@ PASS** (device details not supplied). The MediaProjection lifecycle matrix is **
       VirtualDisplay/ImageReader re-created at the reported size; generation numbers reject
       stale reader callbacks; plane conversion honors `image.cropRect` and padded rows;
       structured diagnostics in `CaptureSessionService`/`FramePipeline`/`VisionPreprocessor`
-- [ ] CI green on the new head for this revision (see PR description for the latest run)
+- [x] CI green on the new head for this revision (run 43773398149, head 5252016cd15c824009368e831ed499f24209980d; 840 unit tests; instrumentation compiled, not executed — no KVM on the runner)
 - [ ] Physical-device smoke of the freeze workflow; on-device accuracy evaluation;
       threshold/heuristic calibration (pending)
 - [ ] Physical-device verification of the landscape capture fix in MLBB (rows 23–32) (pending)

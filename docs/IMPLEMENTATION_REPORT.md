@@ -493,3 +493,72 @@ Docs-only commits after the code freeze do not change the build; the exact final
 Historical green runs from before the review-fix pass (kept as history; do not cite these
 as the current verification): `e58611c` — run 43732908605 (646 executions); `7d0c903` — run
 43731484922 (same totals).
+
+## Critical fix — landscape capture shows only part of the game (device-reported)
+
+Reported by the maintainer on a physical phone: a normal screenshot captures MLBB correctly,
+but the MediaProjection preview/capture shows only part of the game with the rest black;
+portrait apps capture fine. (PR #3, still Draft and unmerged.)
+
+### Root cause analysis
+
+The visible path from Android's capture-resize callback to the frame on screen was inspected:
+`CaptureSessionService` → `FramePipeline` → `ImageReader` → `imageToPayload` →
+`PixelArrayFramePreprocessor`/`AndroidFramePreprocessor` → Vision Lab.
+
+Three defects combined, any one sufficient to produce the symptom:
+
+1. **The capture size was fixed at session start and never re-derived.** The only resize
+   trigger was `MediaProjection.Callback.onCapturedContentResize` (API 34+), so on pre-34
+   devices — and on API 34+ whenever the callback does not fire for whole-screen captures —
+   rotating to landscape left the VirtualDisplay at the portrait session-start size forever.
+   The mirrored landscape content was clipped/letterboxed into the stale buffer and the rest
+   stayed black. The `DisplayManager` listener only updated rotation *metadata*, never size.
+2. **Late frames from a released reader could publish into the replacement reader's stream**
+   (no generation guard) — stale frames could land on top of fresh ones after a resize.
+3. **`image.cropRect` was ignored** in the plane conversion, so letterboxed/partial content
+   (e.g. before the first resize after a rotation) produced shifted garbage rather than the
+   full game.
+
+What was NOT the cause: the game does not block screen capture (a hardware screenshot works);
+the matcher/Vision Lab are unaffected (this bug is in the capture pipeline only).
+
+### Fix
+
+- The captured-content resize callback now feeds a shared, authoritative resize path
+  (`recreateDisplay`) that re-creates the ImageReader/Surface generation at the *reported*
+  dimensions; `DisplayManager` changes re-derive the size from the current window metrics
+  and funnel into the same path — covered on all API levels ≥ 26; both paths are idempotent
+  and deduped by `DisplayChangePolicy`.
+- Every reader/surface generation is numbered (`GenerationCounter`); images captured with a
+  stale generation are dropped at the listener and again at publish time, so a late frame
+  from a released reader can never reach the UI or the frozen snapshot.
+- The plane conversion is rewritten into a pure, JVM-tested `RgbaPlaneCopy`: it honors
+  padded rows (`rowStride > width * pixelStride`), `image.cropRect` (letterboxed/offset
+  content produces a tightly packed image of the content), arbitrary `pixelStride >= 1`
+  and both byte orders; it never mutates the caller's buffer and drops malformed frames
+  instead of faking pixels. Bitmap dimensions used by the vision pipeline equal the
+  payload dimensions exactly.
+- Structured `key=value` diagnostics cover every stage (`session=` id, `generation=`,
+  image dims, cropRect, rowStride, pixelStride, padding, bitmap dims, preprocess in/out).
+  No image contents are logged. See `docs/SCREEN_CAPTURE.md` → "Diagnosing the landscape bug".
+- Freeze continues to work unchanged: the pinned frame is never overwritten by newer frames;
+  a resize during freeze pins the newest *valid* frame; Resume continues with the current
+  generation; the frozen frame is an independently owned copy with no shared payload buffer.
+
+### Evidence
+
+- CI at head `5252016cd15c824009368e831ed499f24209980d` (run 43773398149): **840 unit tests
+  (debug+release), 0 failures / 0 errors / 0 skipped**; strict lint green; `assembleDebug`
+  green; artifact `draftlens-debug`, digest
+  `sha256:c46580570a85054f225bd4d927350b153991f98956b1e3ee9a877d5ed9c1b3f1`.
+- Letterbox/stride/offset behavior verified by deterministic JVM tests
+  (`RgbaPlaneCopyTest` — 22 cases) and the orientation swap in `DisplayChangePolicyTest`.
+- Instrumented tests compiled, not executed (no KVM on the CI runner); the new
+  `FramePipelineInstrumentedTest` covers lifecycle invariants and must run on a device.
+- On-device verification is **pending**: rows 23–32 of `docs/TESTING_PHYSICAL_DEVICE.md`
+  (portrait→landscape, resize storm, freeze-during-rotate, letterbox transient, API-34+
+  single-app resize). **The fix is not claimed to work on a device until those rows are run.**
+- If anything still shows black after this fix, the new logs pin down whether acquisition
+  (`generation=... plane:` line) or conversion (`... frame stored: ... bitmap:` lines) is
+  the source — see `docs/SCREEN_CAPTURE.md` → "Diagnosing the landscape bug with logs".
