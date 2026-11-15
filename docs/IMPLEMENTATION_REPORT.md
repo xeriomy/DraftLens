@@ -454,6 +454,8 @@ review-fix pass and how it was verified.
 
 ### Verification actually performed (this revision)
 
+Docs-only commits after the code freeze do not change the build; the exact final head and its CI run are recorded in PR #3's description.
+
 - **Unit tests, debug and release: 792 executions, 0 failures, 0 errors, 0 skipped** —
   <https://github.com/xeriomy/DraftLens/actions/runs/43745075261>,
   head SHA `7a839d1422ee5ba53f65a78ef746d323091d3b40`.

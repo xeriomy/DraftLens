@@ -83,6 +83,8 @@ locally; every verification below ran in CI on `ubuntu-latest` (x86_64) with JDK
 Workflow: `.github/workflows/build.yml` (one `build` job), triggered by `pull_request`
 (and pushes to `main`/`master`).
 
+Docs-only commits after the code freeze do not change the build; the exact final head and its CI run are recorded in PR #3's description.
+
 Latest green run: <https://github.com/xeriomy/DraftLens/actions/runs/43745075261>
 — head SHA `7a839d1422ee5ba53f65a78ef746d323091d3b40`:
 
