@@ -83,14 +83,14 @@ locally; every verification below ran in CI on `ubuntu-latest` (x86_64) with JDK
 Workflow: `.github/workflows/build.yml` (one `build` job), triggered by `pull_request`
 (and pushes to `main`/`master`).
 
-Latest green run: <https://github.com/xeriomy/DraftLens/actions/runs/43743834524>
-— head SHA `f3ea76983b88a591956564e37003b6fb7e6c95ca`:
+Latest green run: <https://github.com/xeriomy/DraftLens/actions/runs/43745075261>
+— head SHA `7a839d1422ee5ba53f65a78ef746d323091d3b40`:
 
 - **Unit tests: 792 executions (debug + release), 0 failures, 0 errors, 0 skipped.**
 - `assembleAndroidTest` — instrumentation sources compile.
 - strict `lint` (`abortOnError = true`) — green.
-- `assembleDebug` — green; artifact `draftlens-debug`, 10 362 310 bytes,
-  digest `sha256:55919144b62e5ca128c72cb6fb404a22f9fa6c5762ecb1180400f70ea6734826`.
+- `assembleDebug` — green; artifact `draftlens-debug`, 10 362 309 bytes,
+  digest `sha256:53c07492517fdfc2837ebb179393e526d6b397db2146228aa853eb4914221677`.
 
 The instrumentation suite is **compiled but not executed**. The CI runner has no KVM
 access: the default API-30 image does not boot within the runner's timeout, and the

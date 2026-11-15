@@ -455,11 +455,11 @@ review-fix pass and how it was verified.
 ### Verification actually performed (this revision)
 
 - **Unit tests, debug and release: 792 executions, 0 failures, 0 errors, 0 skipped** —
-  <https://github.com/xeriomy/DraftLens/actions/runs/43743834524>,
-  head SHA `f3ea76983b88a591956564e37003b6fb7e6c95ca`.
+  <https://github.com/xeriomy/DraftLens/actions/runs/43745075261>,
+  head SHA `7a839d1422ee5ba53f65a78ef746d323091d3b40`.
 - strict `lint` (abortOnError = true) — green; `assembleDebug` — green; public artifact
-  `draftlens-debug` 10 362 310 bytes, digest
-  `sha256:55919144b62e5ca128c72cb6fb404a22f9fa6c5762ecb1180400f70ea6734826`.
+  `draftlens-debug` 10 362 309 bytes, digest
+  `sha256:53c07492517fdfc2837ebb179393e526d6b397db2146228aa853eb4914221677`.
 - `assembleAndroidTest` — instrumentation sources compile; **the suite was not executed**.
   The CI runner has no KVM access: the default API-30 image did not boot within the
   timeout, and the `aosp_atd` image boots but Gradle reports it as an "Unknown API Level"
