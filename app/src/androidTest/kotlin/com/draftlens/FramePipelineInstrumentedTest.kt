@@ -20,7 +20,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class FramePipelineInstrumentedTest {
 
-    @Test fun `starting a pipeline creates a surface sized to the request`() {
+    @Test fun startingAPipelineCreatesASurfaceSizedToTheRequest() {
         val pipeline = FramePipeline(FrameSampler(FrameSampler.DEFAULT_INTERVAL_MS))
         try {
             pipeline.start(1080, 2400, 440)
@@ -33,7 +33,7 @@ class FramePipelineInstrumentedTest {
         }
     }
 
-    @Test fun `a resize replaces the surface and bumps the generation`() {
+    @Test fun aResizeReplacesTheSurfaceAndBumpsTheGeneration() {
         val pipeline = FramePipeline(FrameSampler(FrameSampler.DEFAULT_INTERVAL_MS))
         try {
             pipeline.start(1080, 2400, 440)
@@ -54,7 +54,7 @@ class FramePipelineInstrumentedTest {
         }
     }
 
-    @Test fun `freezing with no frames published reports NoFrame and keeps the pipeline alive`() {
+    @Test fun freezeWithNoFramesReportsNoFrameAndKeepsPipelineAlive() {
         val pipeline = FramePipeline(FrameSampler(FrameSampler.DEFAULT_INTERVAL_MS))
         try {
             pipeline.start(2400, 1080, 440)
@@ -68,7 +68,7 @@ class FramePipelineInstrumentedTest {
         }
     }
 
-    @Test fun `stopping the pipeline releases its surface`() {
+    @Test fun stoppingThePipelineReleasesItsSurface() {
         val pipeline = FramePipeline(FrameSampler(FrameSampler.DEFAULT_INTERVAL_MS))
         pipeline.start(1080, 2400, 440)
 
