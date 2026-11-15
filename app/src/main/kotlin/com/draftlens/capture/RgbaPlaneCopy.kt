@@ -84,7 +84,8 @@ internal object RgbaPlaneCopy {
     fun copyArgb(buffer: ByteBuffer, layout: PlaneLayout): IntArray? {
         if (layout.cropWidth <= 0 || layout.cropHeight <= 0) return null
         val needsRead = (layout.cropTop.toLong() + layout.cropHeight) * layout.rowStride
-        if (buffer.remaining().toLong() < needsRead) return null
+        // Absolute reads do not depend on the buffer's position; the limit is the real end.
+        if (buffer.limit().toLong() < needsRead) return null
         val bigEndian = buffer.order() == ByteOrder.BIG_ENDIAN
         val out = IntArray(layout.cropWidth * layout.cropHeight)
         val stride = layout.rowStride
