@@ -99,17 +99,18 @@ class SlotImageExtractorTest {
         val image = result.getOrThrow().payload as PixelArrayFramePayload
         assertEquals(2, image.width)
         assertEquals(2, image.height)
-        assertEquals(listOf(5, 6, 9, 10), image.pixels().toList())
+        assertEquals(listOf(10, 11, 14, 15), image.pixels().toList())
     }
 
     @Test fun `the minimum-size rectangle extracts exactly one pixel`() {
-        val source = frame(100, 100, FrameRotation.ROTATION_0, IntArray(10_000) { it })
-        val result = PixelSlotImageExtractor.extract(source, slot(NormalizedRect(0.1f, 0.1f, 0.11f, 0.11f)))
+        // 128x128 keeps 1/128-steps exact in float; 0.125..0.1328125 spans exactly one pixel.
+        val source = frame(128, 128, FrameRotation.ROTATION_0, IntArray(128 * 128) { it })
+        val result = PixelSlotImageExtractor.extract(source, slot(NormalizedRect(0.125f, 0.125f, 0.1328125f, 0.1328125f)))
 
         val image = result.getOrThrow().payload as PixelArrayFramePayload
         assertEquals(1, image.width)
         assertEquals(1, image.height)
-        assertEquals(10 * 100 + 10, image.pixels().single())
+        assertEquals(16 * 128 + 16, image.pixels().single())
     }
 
     @Test fun `a rectangle smaller than one pixel is refused`() {
@@ -139,8 +140,8 @@ class SlotImageExtractorTest {
     }
 
     @Test fun `the crop bounds are floored at the origin and ceiled at the far edge`() {
-        val bounds = slotCropBounds(NormalizedRect(0.25f, 0.2f, 0.6f, 0.7f), 100, 200)
+        val bounds = slotCropBounds(NormalizedRect(0.2f, 0.25f, 0.5f, 0.75f), 100, 200)
 
-        assertEquals(com.draftlens.vision.geometry.PixelRect(25, 40, 60, 140), bounds)
+        assertEquals(com.draftlens.vision.geometry.PixelRect(20, 50, 50, 150), bounds)
     }
 }

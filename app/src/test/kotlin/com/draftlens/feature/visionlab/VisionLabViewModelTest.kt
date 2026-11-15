@@ -477,6 +477,15 @@ class VisionLabViewModelTest {
 
     // endregion
 
+    private fun eventually(timeoutMs: Long = 10_000L, condition: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (condition()) return
+            Thread.sleep(20)
+        }
+        org.junit.Assert.fail("condition not met within $timeoutMs ms")
+    }
+
     private fun slotVm(): VisionLabViewModel = VisionLabViewModel(
         FakeVisionFrameSource(originalFrame("live")),
         EchoPreprocessor(),
@@ -777,27 +786,28 @@ class VisionLabViewModelTest {
         vm.createSlot(NormalizedRect(0.1f, 0.1f, 0.3f, 0.3f))
 
         vm.identifySelectedSlot()
-        val state = withTimeout(5_000) { vm.uiState.first { it.heroRecognition[vm.uiState.value.slots.single().id] != null } }
+        eventually(5_000) {
+            vm.uiState.value.heroRecognition[vm.uiState.value.slots.single().id]?.phase == HeroSlotPhase.FAILED
+        }
+        val slotId = vm.uiState.value.slots.single().id
 
-        assertEquals(HeroSlotPhase.FAILED, state.heroRecognition[state.slots.single().id]!!.phase)
+        assertEquals(HeroSlotPhase.FAILED, vm.uiState.value.heroRecognition[slotId]!!.phase)
         assertTrue(
-            state.heroRecognition[state.slots.single().id]!!.message!!.contains("Sync the hero catalog"),
+            vm.uiState.value.heroRecognition[slotId]!!.message!!.contains("Sync the hero catalog"),
         )
     }
 
     @Test fun `a synced catalog produces ranked candidates for the selected slot`() = runBlocking {
         val vm = recognitionVm()
         vm.syncHeroCatalog()
-        withTimeout(10_000) { vm.uiState.first { it.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready } }
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
         vm.createSlot(NormalizedRect(0.1f, 0.1f, 0.4f, 0.4f))
         val slotId = vm.uiState.value.slots.single().id
 
         vm.identifySelectedSlot()
-        val state = withTimeout(10_000) {
-            vm.uiState.first { it.heroRecognition[slotId]?.phase == HeroSlotPhase.CANDIDATES }
-        }
+        eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CANDIDATES }
 
-        val candidates = state.heroRecognition[slotId]!!.candidates
+        val candidates = vm.uiState.value.heroRecognition[slotId]!!.candidates
         assertTrue(candidates.isNotEmpty())
         assertEquals(2, candidates.size.coerceAtMost(2))
     }
@@ -805,29 +815,25 @@ class VisionLabViewModelTest {
     @Test fun `confirming a candidate persists the hero and clearing removes it`() = runBlocking {
         val vm = recognitionVm()
         vm.syncHeroCatalog()
-        withTimeout(10_000) { vm.uiState.first { it.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready } }
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
         vm.createSlot(NormalizedRect(0.1f, 0.1f, 0.4f, 0.4f))
         val slotId = vm.uiState.value.slots.single().id
         vm.identifySelectedSlot()
-        withTimeout(10_000) { vm.uiState.first { it.heroRecognition[slotId]?.phase == HeroSlotPhase.CANDIDATES } }
+        eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CANDIDATES }
 
         vm.confirmHero(slotId, "miya")
-        val confirmed = withTimeout(5_000) {
-            vm.uiState.first { it.heroRecognition[slotId]?.phase == HeroSlotPhase.CONFIRMED }
-        }
-        assertEquals("Miya", confirmed.heroRecognition[slotId]!!.message)
+        eventually(5_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CONFIRMED }
+        assertEquals("Miya", vm.uiState.value.heroRecognition[slotId]!!.message)
 
         vm.clearHeroConfirmation(slotId)
-        val cleared = withTimeout(5_000) {
-            vm.uiState.first { it.heroRecognition[slotId] == null }
-        }
-        assertNull(cleared.heroRecognition[slotId])
+        eventually(5_000) { vm.uiState.value.heroRecognition[slotId] == null }
+        assertNull(vm.uiState.value.heroRecognition[slotId])
     }
 
     @Test fun `the search filters the cached catalog by name`() = runBlocking {
         val vm = recognitionVm()
         vm.syncHeroCatalog()
-        withTimeout(10_000) { vm.uiState.first { it.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready } }
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
 
         val results = vm.searchCatalog("mi")
 
