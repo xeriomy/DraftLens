@@ -150,9 +150,16 @@ opens the property menu automatically. Slot creation keeps the maintainer's 1A p
 
 ## Acceptance status
 
-- CI green (this PR): unit tests, strict lint, `assembleDebug`, `assembleAndroidTest` (compiled).
+- **CI green** (code head `7d0c9032a52db8e0f962beea72ceae7120822c88`, run 43731484922):
+  **323 unit tests (646 executions, debug + release), 0 failures, 0 errors, 0 skipped**;
+  `assembleAndroidTest` **compiled, not executed**; strict lint passed; `assembleDebug` passed;
+  artifact `draftlens-debug`, 10 334 760 bytes, digest
+  `sha256:122433490a5da130390a8a7b7b1f69eb0040551ca0c7fa82f8bc375f9405741f`.
 - Physical-device smoke: **pending**.
 - Catalog sync on a device: **pending** (verified only through fake transport in unit tests).
 - On-device accuracy: **not measured**.
+- **Catalog entries actually loaded:** measured at sync time on the device that syncs; not yet
+  recorded here. The pagination logic is exercised against fake transports in unit tests;
+  the real total is whatever the API returns when the user presses *Sync catalog*.
 
 See `tasks/todo.md` and `docs/IMPLEMENTATION_REPORT.md` for the running checklist.
