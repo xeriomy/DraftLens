@@ -31,30 +31,20 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Before
+import org.junit.BeforeClass
+import org.junit.AfterClass
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class VisionLabViewModelTest {
-
-    @Before fun setUp() {
-        // Defensive: if a previous test's Main leaked (order-dependent), reset it first.
-        runCatching { Dispatchers.resetMain() }
-        Dispatchers.setMain(UnconfinedTestDispatcher())
-    }
-
-    @After fun tearDown() {
-        Dispatchers.resetMain()
-    }
 
     // region fakes
 
@@ -846,9 +836,24 @@ class VisionLabViewModelTest {
 
     // endregion
 
-    private companion object {
+    companion object {
         /** The frame id whose processing call the fake blocks. */
         const val BLOCKED_FRAME_ID = "first"
+
+        // One Main for the whole class: per-test set/reset raced with the VM's background
+        // collectors (the delegate's NonConcurrentlyModifiable throws when a dispatch lands
+        // mid-mutation). Modify Main once at both ends instead.
+        @JvmStatic
+        @BeforeClass
+        fun setUpClass() {
+            Dispatchers.setMain(UnconfinedTestDispatcher())
+        }
+
+        @JvmStatic
+        @AfterClass
+        fun tearDownClass() {
+            runCatching { Dispatchers.resetMain() }
+        }
     }
 }
 
