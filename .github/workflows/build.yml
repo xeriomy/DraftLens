@@ -73,3 +73,37 @@ jobs:
           grep -E "android.permission.FOREGROUND_SERVICE(_MEDIA_PROJECTION)?" /tmp/draftlens-permissions.txt
           grep -E "android:foregroundServiceType.*0x00000020" /tmp/draftlens-manifest.txt
           grep "CaptureSessionService" /tmp/draftlens-manifest.txt
+
+  instrumented:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Install SDK packages
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          MANAGER="$(find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f | sort -V | tail -n 1)"
+          yes | "$MANAGER" --sdk_root="$SDK_ROOT" --licenses
+          "$MANAGER" --sdk_root="$SDK_ROOT" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew || ls -la
+
+      # The instrumented suite covers the Android bitmap extractor, the image
+      # validator and the capture manifest checks. It does not need MediaProjection:
+      # the physical capture path stays in docs/TESTING_PHYSICAL_DEVICE.md.
+      - name: Run instrumentation tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: default
+          arch: x86_64
+          profile: pixel
+          script: ./gradlew connectedDebugAndroidTest --stacktrace
