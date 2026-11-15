@@ -97,5 +97,5 @@ PASS** (device details not supplied). The MediaProjection lifecycle matrix is **
 - [x] Recognition v0: dHash + color descriptor, explicit no-match, manual confirm/correct
 - [x] Vision Lab card: sync, Identify, candidates, confirmed state, manual correction
 - [x] Unit coverage for catalog, cache, extraction, matching, VM flows
-- [x] CI green: 323 tests (646 executions), strict lint, assembleDebug, assembleAndroidTest compiled (run 43731484922, code head 7d0c903)
+- [x] CI green: 323 tests (646 executions), strict lint, assembleDebug, assembleAndroidTest compiled (run 43732908605, head e58611c; code head 7d0c903 run 43731484922)
 - [ ] Physical-device smoke test and on-device accuracy evaluation (pending)

@@ -150,12 +150,11 @@ opens the property menu automatically. Slot creation keeps the maintainer's 1A p
 
 ## Acceptance status
 
-- **CI green**: final branch head `b4eac9d856fe049d8d6ae8d232472bd4627c1f4e` (run 43732111174,
-  test-only increment on the code head) and code head `7d0c9032a52db8e0f962beea72ceae7120822c88`
-  (run 43731484922); **323 unit tests (646 executions, debug + release), 0 failures,
+- **CI green**: latest branch head `e58611c25d7d9a40592aa3d81ad3347869771cc3` (run 43732908605,
+  test-only); **323 unit tests (646 executions, debug + release), 0 failures,
   0 errors, 0 skipped**; `assembleAndroidTest` **compiled, not executed**; strict lint passed;
   `assembleDebug` passed; artifact `draftlens-debug`, digest
-  `sha256:3c977d55d77c5452425ccfd5ea950ef55722d77319149c076d8bd5d115b85cc9`.
+  `sha256:ad581e4042bc81fb7519c042c35b68d3b152f0c30cbed5c37816a4c2534de788`.
 - Physical-device smoke: **pending**.
 - Catalog sync on a device: **pending** (verified only through fake transport in unit tests).
 - On-device accuracy: **not measured**.
