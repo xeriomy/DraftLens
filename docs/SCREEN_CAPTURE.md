@@ -1,10 +1,38 @@
-# Screen Capture — DraftLens Sprint 0.1.3 + 1B
+# Screen Capture — DraftLens Sprint 0.1.3 + 1B + 1C
 
 ## Mechanism
 `MediaProjectionManager.createScreenCaptureIntent()` → user consent → `ServiceCompat.startForeground()`
 with `ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` → `getMediaProjection()` →
 `createVirtualDisplay()` → `ImageReader` surface. Consent acquisition stays in Activity;
 `CaptureSessionService` performs foreground promotion, projection creation, VirtualDisplay and all frame work.
+
+## The floating freeze button (Sprint 1C)
+
+A single circular 52dp button rendered via `WindowManager` + `TYPE_APPLICATION_OVERLAY`,
+attached by the capture foreground service **only while a capture session is running** and
+removed on every stop/terminate path. It is the primary in-game freeze control; the
+notification retains its Stop action (and the Freeze/Resume actions) but is no longer the
+primary workflow.
+
+Gestures: **tap** toggles LIVE ↔ FROZEN (green ↔ orange, white glyph, 52dp, non-focusable,
+content description set). **Long-press (400 ms) then drag** moves it; any movement before
+the long-press fires cancels the gesture entirely. On release it **snaps to the nearest
+horizontal edge** and persists its position as normalized coordinates in DataStore
+(`floating_control_enabled`, `floating_position_x/y`). Rotation re-anchors it via the
+display-metrics path; no re-consent, no re-attachment races.
+
+`SYSTEM_ALERT_WINDOW` is requested only when the user taps **Enable** on the capture
+screen (Android overlay-settings screen); the capture itself never needs it. If the
+permission is missing or revoked: capture and in-app/notification Freeze/Resume are
+unaffected, the toggle explains how to grant it, and no button is shown. The button calls
+the exact same `CaptureFreeze` path as everything else — it never creates a second
+VirtualDisplay or re-requests consent.
+
+**Isolation caveat:** the overlay sets no flags to hide itself, and no capture region is
+masked. Whether it appears inside single-app or full-display captures is a
+physical-device finding per OEM — not verified in CI. See
+`docs/sprints/SPRINT_1C_APP_ONLY_CAPTURE.md` and rows 33–43 of
+`docs/TESTING_PHYSICAL_DEVICE.md`.
 
 ## Freezing the game frame from the notification (Sprint 1B)
 The ongoing capture notification carries an action (**Freeze current frame**) implemented as
@@ -35,19 +63,25 @@ process death.
   default display's metrics change, the capture size is re-derived from the current window
   metrics and the same resize path runs. Both paths are idempotent and deduped by
   `DisplayChangePolicy`.
-- **Single-app capture** (sharing one window instead of the full screen): the captured
-  window's size is known only through `onCapturedContentResize` (API 34+). Until the callback
-  fires, the VirtualDisplay uses the full-screen metrics; when it fires, capture is resized
-  to the window's content size. Below API 34 single-app size changes cannot be tracked and
-  are not tracked; use full-screen capture for the MLBB workflow.
-- **onCapturedContentVisibilityChanged is not handled**: the app neither reacts to nor
-  depends on single-app visibility transitions; size changes flow through the resize path.
+- **Single-app capture (API 34+ partial capture)**: supported and preferred for the MLBB workflow —
+  the system chooser offers it; DraftLens never forces it. Prefer **Single app / app window →
+  Mobile Legends: Bang Bang**. The captured window's size is known through
+  `onCapturedContentResize` (API 34+) and flows through the resize path; its on-screen
+  visibility flows through `onCapturedContentVisibilityChanged` (see below). Full-display
+  capture remains the fallback for older Android and behaves exactly as before.
+- **onCapturedContentVisibilityChanged (API 34+) IS handled (Sprint 1C)**: while the
+  selected window is hidden, images are acquired and closed but never converted or
+  published; the last valid published game frame is preserved. When the window returns,
+  publication resumes automatically unless a frame is pinned. Full-display captures never
+  report hidden, so this path is inert there. Below API 34 the signal does not exist and
+  the behavior degrades to the previous full-display semantics.
 - **Capture dimensions:** API 30+ uses `WindowManager.maximumWindowMetrics`; lower APIs retain
   the legacy `defaultDisplay.getSize()` path.
 - **Android 12+**: partial screen capture (share one app) is possible in the system dialog.
-  DraftLens requests full-screen capture; choosing app-window capture for the Mobile Legends
-  workflow shows DraftLens itself, not the game — choose **Entire screen / full device
-  display**. The app tells the user this in both capture screens.
+  For the MLBB workflow, **prefer Single app → Mobile Legends**; choose **Entire screen /
+  full device display** only when that option is missing. Full-display capture may include
+  the notification shade, Quick Settings, other apps and DraftLens itself — DraftLens
+  cannot promise notification-free capture on that path. The app says this on screen too.
 - **minSdk 26**: `ImageReader`, `VirtualDisplay`, and foreground-service APIs used are all
   available since API 21–26; no version-branched capture code is needed.
 

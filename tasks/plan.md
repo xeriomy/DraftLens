@@ -184,3 +184,31 @@ No recommendation features, no overlays, no automation, PR stays draft and unmer
 See `docs/VISION_TESTING.md` for the exact CI runs, test totals and what was and was not
 executed. The authoring host remains aarch64, so the CI is the build of record.
 Physical-device verification of the freeze workflow is pending.
+
+## Sprint 1C — App-only capture & circular floating control
+Objective: let the user freeze/resume the live MLBB capture without leaving the game —
+prefer single-app (partial) capture, keep the last valid game frame when MLBB is hidden,
+and add exactly one circular overlay button. No recommendation UI, no panels, no automation.
+PR #4 stacked on PR #3 (`sprint-1b-hero-recognition`); nothing merges automatically;
+Sprint 1B history intact.
+
+### Work items in order
+- [x] Pure visibility policy + truth-table tests (hidden ⇒ nothing publishes; frozen wins over visible)
+- [x] `FramePipeline` gate: images acquired/closed but never converted while hidden;
+      publish-time synchronized re-check; API-34 `onCapturedContentVisibilityChanged` in the
+      existing CAPTURING guard
+- [x] Freeze-while-hidden / resume-while-hidden semantics: last valid frame preserved;
+      LIVE intent remembered across hidden periods; no second VirtualDisplay/projection ever
+- [x] Overlay position math (normalized free-axis coords, edge snap) + JVM tests
+- [x] Overlay enablement decision + DataStore persistence (position + enabled)
+- [x] 52dp circular `TYPE_APPLICATION_OVERLAY` button: tap = Freeze/Resume (green/orange,
+      white glyph), 400 ms long-press drag, edge snap, rotation re-anchor, non-focusable
+- [x] Service attach/detach only during capture, every teardown path removes it;
+      `ACTION_OVERLAY_UPDATE` re-sync; manifest declares `SYSTEM_ALERT_WINDOW`, requested
+      only from the enable toggle
+- [x] Two-mode capture guidance in the debug screen + Vision Lab; denial path documented
+      (capture + in-app Freeze/Resume unaffected)
+- [x] Instrumentation test for overlay attach/remove (compile-only in CI)
+- [x] JVM sequence tests: hidden→freeze→resume→visible; explicit freeze blocks auto-resume
+- [ ] CI green record, APK digest, device rows 33–43 NOT RUN (maintainer)
+- [ ] PR #4 description + report; physical-device acceptance checklist is maintainer-run

@@ -51,13 +51,31 @@ Status values: **PASS**, **FAIL**, **PARTIAL**, **NOT RUN**. Record the commit S
 | 30 | Freeze after resize | After a portrait→landscape resize, tap Freeze: pinned frame is the landscape frame at the new dimensions, complete | NOT RUN |
 | 31 | Mismatch diagnosis | Intentionally start capture with the game in landscape, then force-stop rotation events via lock/unlock: collect `CaptureSessionService`/`FramePipeline` logcat and verify dimensions, cropRect, rowStride and generation lines; confirm no frame mixes generations | NOT RUN |
 | 32 | Single-app share resize (API 34+) | Share only the MLBB window: capture resizes to the window's content size via `onCapturedContentResize`; the app logs the resize; releasing the app restores the full share | NOT RUN |
+| 33 | Floating control appears while capturing | Enable it on the capture screen (grant the overlay permission when prompted); start capture, switch to MLBB; the circular button is visible, green, ~52dp | NOT RUN |
+| 34 | Overlay absent from single-app capture | With single-app MLBB capture, confirm the button is **not** visible in the captured frame (logcat: `OverlayController` + Vision Lab pinned frame) | NOT RUN |
+| 35 | Overlay present in full-display fallback | Repeat the capture-frame check in full-display mode; document whether the button appears there; confirm it snaps to an edge and away from the draft area | NOT RUN |
+| 36 | Tap freeze inside MLBB | In game, tap the circle: glyph becomes the pause glyph on orange; Vision Lab shows the pinned frame, not DraftLens | NOT RUN |
+| 37 | Tap resume inside MLBB | Tap the circle again: live capture resumes without a new consent dialog or VirtualDisplay; glyph returns to LIVE green | NOT RUN |
+| 38 | Drag, long-press and edge snap | Long-press (~0.4 s) then drag the button to the other edge; on release it snaps and stays there after rotation | NOT RUN |
+| 39 | Rotation with overlay shown | Rotate portrait↔landscape with the button shown: it stays inside the screen in the same relative position; draft regions remain usable | NOT RUN |
+| 40 | Overlay permission denied | Decline the overlay permission: capture still starts, in-app Freeze/Resume still work, the capture screen shows how to grant it later; no button is shown | NOT RUN |
+| 41 | Stop while frozen with overlay shown | Tap Stop with a frame pinned and the button visible: button disappears, projection released, the pinned frame survives in Vision Lab | NOT RUN |
+| 42 | Notification shade never replaces the pinned frame | In game with single-app MLBB capture, open the notification shade repeatedly: the pinned frame and live preview never show the shade | NOT RUN |
+| 43 | App hidden resume-intent | While frozen, return to DraftLens with MLBB in the background; tap Resume in DraftLens; return to MLBB: live capture is resumed (the hidden-period intent is remembered) | NOT RUN |
+
+## Sprint 1C capture-isolation finding (maintainer to fill in)
+
+Whether the overlay appears in single-app and full-display captures is an on-device finding.
+Record the outcome of rows 34/35 here (device model, Android version, OEM skin) and whether
+the button contaminated hero-slot crops taken on the fallback path. Do not mark a row PASS
+without evidence from that run.
 
 ## Evidence to capture each run
 - `git rev-parse --short HEAD`
 - Device model and Android version (`adb shell getprop ro.product.model`, `adb shell getprop ro.build.version.release`)
 - DraftLens version/APK artifact run ID
-- Logcat lines tagged `CaptureSessionService`, `FramePipeline`, `VisionPreprocessor`
-  (`adb logcat -v time -s CaptureSessionService FramePipeline VisionPreprocessor`) for the
+- Logcat lines tagged `CaptureSessionService`, `FramePipeline`, `VisionPreprocessor`, `OverlayController`
+  (`adb logcat -v time -s CaptureSessionService FramePipeline VisionPreprocessor OverlayController`) for the
   capture dimensions, resize events, plane layout and frame-generation lines
 - Initial resolution, frame count after 10 seconds, preview visible Y/N
 - For failures: full exception and steps immediately before it

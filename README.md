@@ -34,6 +34,15 @@ and [docs/VISION_TESTING.md](docs/VISION_TESTING.md).
   capture notification while you are in MLBB — no need to leave the game; Vision Lab shows the
   pinned game frame, not the DraftLens screen; **Resume live capture** from the notification or
   in the Vision Lab
+- App-only capture guidance (Sprint 1C): prefer **Single app / app window → Mobile Legends**
+  (Android 14+ chooser); the captured window's visibility drives publication —
+  MLBB hidden ⇒ the last valid game frame is kept, never DraftLens/shade/system UI;
+  full-display capture remains the documented fallback (it may include the shade/system UI)
+- Circular floating freeze button (Sprint 1C): one 52dp circular `TYPE_APPLICATION_OVERLAY`
+  button shown only while capture runs — tap toggles LIVE (green) / FROZEN (orange),
+  long-press-and-drag moves it, it snaps to a screen edge, position persists normalized in
+  DataStore; notifications/in-app Freeze/Resume keep working without it; the overlay
+  permission is requested only when you enable the button
 
 ## What is deliberately NOT here (later milestones)
 ML hero recognition, recommendation engine, counter/synergy/role scoring, floating overlays,

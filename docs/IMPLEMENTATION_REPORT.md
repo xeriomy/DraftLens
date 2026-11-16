@@ -562,3 +562,50 @@ the matcher/Vision Lab are unaffected (this bug is in the capture pipeline only)
 - If anything still shows black after this fix, the new logs pin down whether acquisition
   (`generation=... plane:` line) or conversion (`... frame stored: ... bitmap:` lines) is
   the source — see `docs/SCREEN_CAPTURE.md` → "Diagnosing the landscape bug with logs".
+
+---
+
+# Sprint 1C — App-Only Capture & Circular Floating Control
+
+**Branch:** `sprint-1c-app-only-capture` · stacked on PR #3 (`sprint-1b-hero-recognition`, unmerged) · **PR:** #4 (base `sprint-1b-hero-recognition`)
+**Spec:** maintainer Sprint 1C brief · **Design:** `docs/superpowers/specs/2026-11-16-sprint-1c-app-only-capture-design.md`
+
+## What shipped
+
+- Single-app (API 34+ partial) capture is now the recommended MLBB mode; the system chooser
+  is never forced. `onCapturedContentVisibilityChanged` drives frame publication: while the
+  selected window is hidden, images are acquired and closed but never converted or published;
+  the last valid game frame (and, if pinned, the frozen snapshot) is preserved. Publication
+  resumes on visibility return unless a frame is pinned. Full-display capture remains the
+  documented fallback with an explicit no-notification-free-promise note.
+- One circular 52dp floating button (`TYPE_APPLICATION_OVERLAY`), shown only while a capture
+  session runs and only after the user grants the overlay permission (requested from the
+  capture screen, never at install time). Tap toggles LIVE (green) / FROZEN (orange) by calling
+  the shared `CaptureFreeze` path; 400 ms long-press arms drag; release snaps to the nearest
+  horizontal edge and persists normalized coordinates (DataStore). Rotation re-anchors it.
+- Overlay is non-focusable, exactly button-sized, and removed on every teardown path
+  (stop, error, revoke, task removal, resize failure).
+- Guidance rewritten: the "choose Entire screen" instruction is gone from the debug and
+  Vision Lab screens.
+- No recommendation UI, no panel, no menu, no accessibility service; `SYSTEM_ALERT_WINDOW`
+  declared, requested only on opt-in.
+
+## Verification
+
+- CI head: PENDING
+- Unit tests: PENDING
+- Instrumentation: PENDING (compiled via `assembleAndroidTest` in CI; not executed — no KVM)
+- Debug APK: PENDING
+- Physical device (rows 33–43 of `docs/TESTING_PHYSICAL_DEVICE.md`): NOT RUN — maintainer task;
+  in particular the overlay-vs-capture isolation finding (rows 34/35) is an on-device question
+  that CI cannot answer; no exclusion claim is made.
+
+## Known limitations / compatibility notes
+
+- API < 34: no visibility signal; app-only windows are undetectable — behavior degrades to
+  full-display semantics.
+- Full-display fallback may capture the shade/system UI/other apps/DraftLens; the freeze
+  controls still work.
+- Whether the overlay appears inside captures is unverified per device (see sprint doc).
+- A resume requested while MLBB is hidden flips the user's intent to LIVE and takes effect
+  when MLBB returns; publication stays gated while hidden (no black/DraftLens frames).
