@@ -93,10 +93,10 @@ can establish it per device/OEM.
 CI (GitHub Actions, ubuntu-latest) is the build of record — the authoring host has no
 Android toolchain.
 
-- Implementation head `6e2d7b7` (docs-only commits after it change no build inputs):
-  CI run 43782436092 — **888 unit tests, 0 failures / 0 errors / 0 skipped**; strict lint green;
+- Implementation head `f992d45` (docs-only commits after it change no build inputs):
+  CI run 43784157138 — **886 unit tests, 0 failures / 0 errors / 0 skipped**; strict lint green;
   `assembleAndroidTest` green; `assembleDebug` green; APK `app-debug.apk`
-  sha256 `3f390ac92458815e292897dfe937ae66bd9179946d533a33cf1a9386b864b551`.
+  sha256 `1d1f50629e145d48e64ed56d0cf74228e7d48d4c6f94fde81eb6c22fc4795810`.
 - Instrumentation tests: **compiled via `assembleAndroidTest`; not executed** (no KVM on the runner).
 - Automated coverage gaps, stated honestly: **LIVE→FROZEN pinning a real frame** (an
   ImageReader surface cannot be filled from a test Canvas, and the pin path is exercised
