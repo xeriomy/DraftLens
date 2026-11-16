@@ -22,6 +22,9 @@ class CaptureVisibilityPolicy {
     /** Last visibility state; starts visible because most projections are full-display. */
     fun isContentVisible(): Boolean = contentVisible
 
+    /** Effective state for structured diagnostics. */
+    fun currentState(): String = if (contentVisible) "VISIBLE" else "HIDDEN"
+
     /**
      * Records a visibility change. Returns what changed so callers can log and act;
      * `changed == false` means the platform repeated the current value and the caller

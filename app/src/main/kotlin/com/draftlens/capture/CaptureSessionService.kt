@@ -67,6 +67,9 @@ class CaptureSessionService : Service() {
     private var overlayController: OverlayController? = null
     /** Increments once per capture session; tags every structured log line. */
     private var sessionCounter = 0
+    private var visibilityCallbackSeq = 0L
+    private var resizeCallbackSeq = 0L
+    private val diagnostics = CaptureDiagnostics()
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -75,6 +78,13 @@ class CaptureSessionService : Service() {
         }
 
         override fun onCapturedContentResize(width: Int, height: Int) {
+            resizeCallbackSeq += 1
+            Log.i(
+                TAG,
+                "session=$sessionCounter resize-callback seq=$resizeCallbackSeq ${width}x${height} " +
+                    "status=${CaptureStateHolder.state.value.status} virtualDisplayReady=${virtualDisplay != null} " +
+                    "pipelineReady=${::pipeline.isInitialized && pipeline.surface() != null}",
+            )
             // The captured-content dimensions are authoritative; they are not the same as
             // the display-window metrics the session started with (that is the landscape bug).
             recreateDisplay(width, height, source = "captured-content-resize")
@@ -89,9 +99,15 @@ class CaptureSessionService : Service() {
          * gate (a hide during PAUSED would otherwise publish foreign frames on resume).
          */
         override fun onCapturedContentVisibilityChanged(isVisible: Boolean) {
-            Log.i(TAG, "captured-content visibility changed: visible=$isVisible")
+            visibilityCallbackSeq += 1
+            Log.i(
+                TAG,
+                "session=$sessionCounter visibility-callback seq=$visibilityCallbackSeq visible=$isVisible " +
+                    "pipelineInitialized=${::pipeline.isInitialized} status=${CaptureStateHolder.state.value.status} " +
+                    "virtualDisplayReady=${virtualDisplay != null}",
+            )
             if (!::pipeline.isInitialized) {
-                Log.i(TAG, "ignoring visibility change: pipeline is not created")
+                Log.i(TAG, "session=$sessionCounter visibility callback arrived before pipeline init: BUFFERED")
                 return
             }
             pipeline.onContentVisibilityChanged(isVisible)
@@ -216,7 +232,7 @@ class CaptureSessionService : Service() {
                         val displayRotation = currentDisplayRotation()
                         Log.i(TAG, "session=$sessionCounter capture-start: dimensions=${captureWidth}x${captureHeight} dpi=$dpi rotation=$displayRotation source=windowMetrics")
 
-                        pipeline.start(captureWidth, captureHeight, dpi, displayRotation)
+                        pipeline.start(captureWidth, captureHeight, dpi, displayRotation, sessionId = sessionCounter)
                         CaptureFreeze.attachPipeline(pipeline)
                         createVirtualDisplay(proj, captureWidth, captureHeight, dpi)
                         registerDisplayListener()
@@ -340,6 +356,15 @@ class CaptureSessionService : Service() {
             pipeline.latestFrame.collectLatest { frame ->
                 if (frame != null && CaptureStateHolder.state.value.status == CaptureStatus.CAPTURING) {
                     CaptureStateHolder.recordFrame(frame)
+                    val delivered = diagnostics.sample("holder-delivered")
+                    if (diagnostics.shouldLog(delivered)) {
+                        Log.i(TAG, "session=$sessionCounter recordFrame delivered count=$delivered frame=${frame.width}x${frame.height} id=${frame.frame.id.value}")
+                    }
+                } else if (frame != null) {
+                    val dropped = diagnostics.sample("holder-drop-status")
+                    if (diagnostics.shouldLog(dropped)) {
+                        Log.i(TAG, "session=$sessionCounter recordFrame skipped count=$dropped status=${CaptureStateHolder.state.value.status}")
+                    }
                 }
             }
         }

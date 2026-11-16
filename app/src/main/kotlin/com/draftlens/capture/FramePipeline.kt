@@ -50,6 +50,13 @@ class FramePipeline(
      */
     private val visibility = CaptureVisibilityPolicy()
 
+    /** Bounded, event-keyed diagnostics (first 4 + every 20 per event; never pixels). */
+    private val diagnostics = CaptureDiagnostics()
+
+    /** Session id copied from the service for every structured log line. */
+    @Volatile
+    private var sessionId: Int = 0
+
     /**
      * Feeds the captured-content visibility signal (API 34+) into the publication gate.
      * Full-display captures never report hidden; the gate stays open for them.
@@ -59,6 +66,9 @@ class FramePipeline(
         Log.i(TAG, "captured-content visibility: visible=$visible changed=${transition.changed} generation=${generation.current()}")
         return transition
     }
+
+    /** Effective gate state for the structured acquisition log. */
+    fun visibilityState(): String = visibility.currentState().name
 
     /**
      * Bumped every time a new reader/surface generation is created (start/resize).
@@ -118,7 +128,10 @@ class FramePipeline(
         densityDpi: Int,
         initialDisplayRotation: FrameRotation = FrameRotation.ROTATION_0,
         resetVisibility: Boolean = true,
+        sessionId: Int = 0,
     ) {
+        this.sessionId = sessionId
+        diagnostics.reset()
         stopInternal(release = true)
         displayWidth = width
         displayHeight = height
@@ -134,64 +147,97 @@ class FramePipeline(
         imageReader = ImageReader.newInstance(width, height, android.graphics.PixelFormat.RGBA_8888, 3).also { reader ->
             reader.setOnImageAvailableListener({ reader ->
                 val image = try { reader.acquireLatestImage() } catch (e: Exception) {
-                    e.printStackTrace()
+                    val n = diagnostics.sample("acquire-exception")
+                    if (diagnostics.shouldLog(n)) Log.w(TAG, "session=$sessionId acquisition exception count=$n", e)
                     null
                 }
-                if (image == null) return@setOnImageAvailableListener
+                if (image == null) {
+                    val n = diagnostics.sample("acquire-null")
+                    if (diagnostics.shouldLog(n)) Log.i(TAG, "session=$sessionId acquireLatestImage returned null count=$n")
+                    return@setOnImageAvailableListener
+                }
                 val wallStartedAtMs = System.currentTimeMillis()
+                val acquired = diagnostics.sample("acquired")
+                val activeNow = isActive()
+                val currentNow = generation.isCurrent(generationAtStart)
+                val frozenNow = frozen
+                val visibleNow = visibility.currentState()
+                val geometry = "session=$sessionId gen=$generationAtStart acquired=$acquired " +
+                    "image=${image.width}x${image.height} isActive=$activeNow generationCurrent=$currentNow " +
+                    "frozen=$frozenNow contentVisible=${visibleNow.name}"
+                if (diagnostics.shouldLog(acquired)) Log.i(TAG, "acquire: $geometry")
                 try {
-                    if (!visibility.shouldPublish(isActive = isActive(), generationCurrent = generation.isCurrent(generationAtStart), frozen = frozen)) {
-                        // Inactive, stale generation, frozen or hidden app-only window:
-                        // images are acquired and closed; nothing is converted or published.
+                    if (!visibility.shouldPublish(isActive = activeNow, generationCurrent = currentNow, frozen = frozenNow)) {
+                        val reason = when {
+                            !activeNow -> "isActive"
+                            !currentNow -> "staleGeneration"
+                            frozenNow -> "frozen"
+                            else -> "contentHidden"
+                        }
+                        val rejectCount = diagnostics.sample("gate-reject:$reason")
+                        if (diagnostics.shouldLog(rejectCount)) {
+                            Log.i(TAG, "drop gate=$reason count=$rejectCount $geometry")
+                        }
                         return@setOnImageAvailableListener
                     }
                     val sampledAtMs = sampler.currentTimeMs()
-                    if (sampler.shouldEmit(sampledAtMs)) {
-                        // Reference image only to avoid leaks; pixels are copied via the plane.
-                        // Sprint 0 keeps this synchronous and in-memory; no disk, no upload.
-                        val payload = imageToPayload(image, generationAtStart)
-                        if (payload == null) {
-                            Log.w(TAG, "generation=$generationAtStart dropped frame: payload conversion failed")
-                            return@setOnImageAvailableListener
-                        }
-                        synchronized(freezeGate) {
-                            if (frozen) {
-                                // A freeze command landed during the conversion; the snapshot is authoritative.
-                                Log.d(TAG, "generation=$generationAtStart dropped frame: a freeze command landed during conversion")
-                            } else if (!visibility.isContentVisible()) {
-                                // The window went hidden while converting; keep the last valid game frame.
-                                Log.d(TAG, "generation=$generationAtStart dropped frame: captured content became hidden during conversion")
-                            } else if (!generation.isCurrent(generationAtStart)) {
-                                // An even newer generation took over while converting.
-                                Log.d(TAG, "generation=$generationAtStart dropped frame: superseded by generation=${generation.current()} during conversion")
-                            } else {
-                                val processingLatencyMs = System.currentTimeMillis() - wallStartedAtMs
-                                // One read per frame: both fields below see the same rotation.
-                                val frameDisplayRotation = displayRotation
-                                val visionFrame = OriginalFrame(
-                                    id = FrameId.random(),
-                                    payload = payload,
-                                    sourceWidth = payload.width,
-                                    sourceHeight = payload.height,
-                                    displayRotation = frameDisplayRotation,
-                                    // MediaProjection buffers are display-oriented; never double-rotate pixels.
-                                    rotation = FrameOrientation.correctionFor(frameDisplayRotation),
-                                    capturedAtElapsedRealtimeMs = sampledAtMs,
-                                    wallClockTimestampMs = System.currentTimeMillis(),
-                                    captureLatencyMs = processingLatencyMs,
-                                )
-                                sampler.markEmitted(sampledAtMs)
-                                _latestFrame.value = CapturedFrame(
-                                    frame = visionFrame,
-                                    processingLatencyMs = processingLatencyMs
-                                )
-                                Log.d(TAG, "generation=$generationAtStart frame stored: source=${payload.width}x${payload.height} rotation=$frameDisplayRotation processingMs=$processingLatencyMs")
+                    if (!sampler.shouldEmit(sampledAtMs)) {
+                        val n = diagnostics.sample("sampling-reject")
+                        if (diagnostics.shouldLog(n)) Log.i(TAG, "drop sampling count=$n $geometry")
+                        return@setOnImageAvailableListener
+                    }
+                    val acceptedCount = diagnostics.sample("sampling-accepted")
+                    if (diagnostics.shouldLog(acceptedCount)) Log.i(TAG, "sampling accepted count=$acceptedCount $geometry")
+
+                    // Reference image only to avoid leaks; pixels are copied via the plane.
+                    val payload = imageToPayload(image, generationAtStart)
+                    if (payload == null) {
+                        val n = diagnostics.sample("conversion-failed")
+                        if (diagnostics.shouldLog(n)) Log.w(TAG, "drop conversion-failed count=$n $geometry")
+                        return@setOnImageAvailableListener
+                    }
+                    val convertedCount = diagnostics.sample("conversion-ok")
+                    if (diagnostics.shouldLog(convertedCount)) {
+                        Log.i(TAG, "converted count=$convertedCount bitmap=${payload.width}x${payload.height} $geometry")
+                    }
+                    synchronized(freezeGate) {
+                        if (frozen) {
+                            val n = diagnostics.sample("publish-drop-frozen")
+                            if (diagnostics.shouldLog(n)) Log.i(TAG, "drop at-publish frozen count=$n $geometry")
+                        } else if (!visibility.isContentVisible()) {
+                            val n = diagnostics.sample("publish-drop-hidden")
+                            if (diagnostics.shouldLog(n)) Log.i(TAG, "drop at-publish contentHidden count=$n $geometry")
+                        } else if (!generation.isCurrent(generationAtStart)) {
+                            val n = diagnostics.sample("publish-drop-generation")
+                            if (diagnostics.shouldLog(n)) Log.i(TAG, "drop at-publish staleGeneration count=$n $geometry")
+                        } else {
+                            val processingLatencyMs = System.currentTimeMillis() - wallStartedAtMs
+                            val frameDisplayRotation = displayRotation
+                            val visionFrame = OriginalFrame(
+                                id = FrameId.random(),
+                                payload = payload,
+                                sourceWidth = payload.width,
+                                sourceHeight = payload.height,
+                                displayRotation = frameDisplayRotation,
+                                rotation = FrameOrientation.correctionFor(frameDisplayRotation),
+                                capturedAtElapsedRealtimeMs = sampledAtMs,
+                                wallClockTimestampMs = System.currentTimeMillis(),
+                                captureLatencyMs = processingLatencyMs,
+                            )
+                            sampler.markEmitted(sampledAtMs)
+                            _latestFrame.value = CapturedFrame(
+                                frame = visionFrame,
+                                processingLatencyMs = processingLatencyMs
+                            )
+                            val published = diagnostics.sample("published")
+                            if (diagnostics.shouldLog(published)) {
+                                Log.i(TAG, "published to _latestFrame count=$published source=${payload.width}x${payload.height} rotation=$frameDisplayRotation processingMs=$processingLatencyMs $geometry")
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    // Never let a bad frame kill the pipeline; next frame recovers.
-                    e.printStackTrace()
+                    val n = diagnostics.sample("frame-exception")
+                    if (diagnostics.shouldLog(n)) Log.w(TAG, "frame exception count=$n $geometry", e)
                 } finally {
                     try { image.close() } catch (_: Exception) {}
                 }
@@ -211,7 +257,10 @@ class FramePipeline(
      */
     fun freezeAndSnapshot(): FreezeResult = synchronized(freezeGate) {
         if (frozen) return FreezeResult.AlreadyFrozen
-        val frame = _latestFrame.value ?: return FreezeResult.NoFrame
+        val frame = _latestFrame.value ?: run {
+            Log.w(TAG, "session=$sessionId freeze: NoFrame — pipeline has not published any frame; geometry=${displayWidth}x${displayHeight} visibility=${visibility.currentState().name} frozen=$frozen")
+            return FreezeResult.NoFrame
+        }
         val copy = FrameSnapshots.copyOf(frame) ?: return FreezeResult.NoFrame
         frozen = true
         Log.i(TAG, "generation=${generation.current()} frame pinned: ${frame.width}x${frame.height} id=${frame.frame.id.value}")
@@ -268,15 +317,17 @@ class FramePipeline(
                 Log.w(TAG, "generation=$generation dropped frame: plane copy failed for layout=$layout")
                 return null
             }
-            Log.d(
+            val planeLog = diagnostics.sample("plane-detail")
+            if (diagnostics.shouldLog(planeLog)) Log.i(
                 TAG,
-                "generation=$generation plane: image=${layout.imageWidth}x${layout.imageHeight} " +
+                "generation=$generation plane: count=$planeLog image=${layout.imageWidth}x${layout.imageHeight} " +
                     "crop=${layout.cropLeft},${layout.cropTop} ${layout.cropWidth}x${layout.cropHeight} " +
                     "rowStride=${layout.rowStride} pixelStride=${layout.pixelStride} " +
                     "paddingBytes=${layout.rowPaddingBytes} fullCrop=${layout.isFullCrop} bufferBytes=${plane.buffer.remaining()}",
             )
             val bitmap = Bitmap.createBitmap(argb, layout.cropWidth, layout.cropHeight, Bitmap.Config.ARGB_8888)
-            Log.d(TAG, "generation=$generation bitmap: ${bitmap.width}x${bitmap.height}")
+            val bitmapLog = diagnostics.sample("bitmap-detail")
+            if (diagnostics.shouldLog(bitmapLog)) Log.i(TAG, "generation=$generation bitmap: count=$bitmapLog ${bitmap.width}x${bitmap.height}")
             BitmapFramePayload(bitmap)
         } catch (e: Exception) {
             Log.w(TAG, "generation=$generation dropped frame: conversion threw", e)
