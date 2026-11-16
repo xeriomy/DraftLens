@@ -144,4 +144,4 @@ Verification runs in GitHub Actions because the authoring host has no Android to
 - [x] Overlay glyph/tap driven by the shared publish state; toast on NoFrame
 - [x] Permissions-only UI (notification + overlay); tutorial and help text removed
 - [x] Docs sync + device rows 44–53; tests added (JVM + compile-only instrumented)
-- [ ] Task 10: CI green record + APK digest; report
+- [x] Task 10: CI green record (run 43922482183 at `130ce6c`: 904 unit tests, 0 failures; APK sha256 `48b5…`); report

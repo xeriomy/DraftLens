@@ -163,5 +163,6 @@ preview are unchanged.
 
 ### Verification
 
-- CI head / results: see the PR #4 description (edited after each green run).
+- Implementation head `130ce6c`: CI run 43922482183 — **904 unit tests, 0 failures / 0 errors / 0 skipped**;
+  lint + `assembleAndroidTest` + `assembleDebug` green; APK sha256 `48b510673919fe2caa9c906747d9dc766eb27bb170c589f67b58c9a175dd7b72`.
 - Physical device: rows 44–53 remain **NOT RUN**.

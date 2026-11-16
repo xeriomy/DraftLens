@@ -656,6 +656,9 @@ compact card.
 
 ## Verification
 
-- CI head / APK digest: see the PR #4 description (edited after each green run).
+- Implementation head `130ce6c`: CI run 43922482183 — **904 unit tests, 0 failures / 0 errors / 0 skipped**;
+  strict lint green; `assembleAndroidTest` green; `assembleDebug` green; APK `app-debug.apk`
+  sha256 `48b510673919fe2caa9c906747d9dc766eb27bb170c589f67b58c9a175dd7b72`. Docs-only commits after
+  it change no build inputs and are re-checked by CI on every push.
 - Instrumented tests: compiled via `assembleAndroidTest`; not executed (no KVM).
 - Physical device rows 44–53: **NOT RUN** — see `docs/TESTING_PHYSICAL_DEVICE.md`.
