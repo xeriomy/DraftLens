@@ -72,6 +72,21 @@ class CaptureSessionService : Service() {
             // the display-window metrics the session started with (that is the landscape bug).
             recreateDisplay(width, height, source = "captured-content-resize")
         }
+
+        /**
+         * API 34+: the window chosen in the chooser left or returned to the screen.
+         * The projection stays valid: while hidden, images are acquired and closed but
+         * never published, so DraftLens/shade/other apps can never replace the last
+         * valid game frame. Returning to MLBB reopens publication unless a frame is pinned.
+         */
+        override fun onCapturedContentVisibilityChanged(isVisible: Boolean) {
+            Log.i(TAG, "captured-content visibility changed: visible=$isVisible")
+            if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING) {
+                Log.i(TAG, "ignoring visibility change: capture is not in CAPTURING state")
+                return
+            }
+            pipeline.onContentVisibilityChanged(isVisible)
+        }
     }
 
     override fun onCreate() {

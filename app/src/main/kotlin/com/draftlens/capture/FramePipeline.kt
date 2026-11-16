@@ -44,6 +44,26 @@ class FramePipeline(
     private var frozen = false
 
     /**
+     * Gate for app-only (single-app) captures: while the selected window is hidden,
+     * images are acquired and closed but never converted or published, so DraftLens,
+     * the shade or other apps can never overwrite the last valid game frame.
+     */
+    private val visibility = CaptureVisibilityPolicy()
+
+    /**
+     * Feeds the captured-content visibility signal (API 34+) into the publication gate.
+     * Full-display captures never report hidden; the gate stays open for them.
+     */
+    fun onContentVisibilityChanged(visible: Boolean): VisibilityTransition {
+        val transition = visibility.onContentVisibilityChanged(visible)
+        Log.i(TAG, "captured-content visibility: visible=$visible changed=${transition.changed} generation=${generation.current()}")
+        return transition
+    }
+
+    /** Visibility state as the publication gate sees it; diagnostic only. */
+    fun isContentVisible(): Boolean = visibility.isContentVisible()
+
+    /**
      * Bumped every time a new reader/surface generation is created (start/resize).
      * Images captured with an older generation are dropped, so a late callback from a
      * released reader can never publish into the replacement reader's frame stream.
@@ -108,6 +128,8 @@ class FramePipeline(
         handlerThread = HandlerThread("draftlens-capture").also { it.start() }
         val handler = Handler(handlerThread!!.looper)
         val generationAtStart = generation.bump()
+        // A fresh session starts with the window visible; the callback will correct this.
+        visibility.onContentVisibilityChanged(true)
         Log.i(TAG, "pipeline start: width=$width height=$height density=$densityDpi rotation=$initialDisplayRotation generation=$generationAtStart")
 
         imageReader = ImageReader.newInstance(width, height, android.graphics.PixelFormat.RGBA_8888, 3).also { reader ->
@@ -119,13 +141,9 @@ class FramePipeline(
                 if (image == null) return@setOnImageAvailableListener
                 val wallStartedAtMs = System.currentTimeMillis()
                 try {
-                    if (!isActive()) return@setOnImageAvailableListener
-                    if (!generation.isCurrent(generationAtStart)) {
-                        // A newer reader/surface generation owns the pipeline; drop late images.
-                        return@setOnImageAvailableListener
-                    }
-                    if (frozen) {
-                        // Frozen: images are acquired and closed in finally; no conversion, no retention.
+                    if (!visibility.shouldPublish(isActive = isActive(), generationCurrent = generation.isCurrent(generationAtStart), frozen = frozen)) {
+                        // Inactive, stale generation, frozen or hidden app-only window:
+                        // images are acquired and closed; nothing is converted or published.
                         return@setOnImageAvailableListener
                     }
                     val sampledAtMs = sampler.currentTimeMs()
@@ -141,6 +159,9 @@ class FramePipeline(
                             if (frozen) {
                                 // A freeze command landed during the conversion; the snapshot is authoritative.
                                 Log.d(TAG, "generation=$generationAtStart dropped frame: a freeze command landed during conversion")
+                            } else if (!visibility.isContentVisible()) {
+                                // The window went hidden while converting; keep the last valid game frame.
+                                Log.d(TAG, "generation=$generationAtStart dropped frame: captured content became hidden during conversion")
                             } else if (!generation.isCurrent(generationAtStart)) {
                                 // An even newer generation took over while converting.
                                 Log.d(TAG, "generation=$generationAtStart dropped frame: superseded by generation=${generation.current()} during conversion")
