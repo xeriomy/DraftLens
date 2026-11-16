@@ -386,6 +386,8 @@ review-fix pass and how it was verified.
 - **Part A — Freeze from the notification.** New `CaptureFreeze` bridge (service command +
   in-app button are one code path). The ongoing capture notification now exposes
   **Freeze current frame** (LIVE state) / **Resume live capture** (FROZEN state) plus
+  (superseded by the Sprint 1C follow-up: the notification now carries **Pause**/**Resume**)
+
   **Stop**. The command goes to the running service via an explicit, immutable
   `PendingIntent.getService` (`ACTION_FREEZE` / `ACTION_RESUME_LIVE`); it never launches an
   Activity, never re-promotes the service, never re-requests consent and never creates a
@@ -562,3 +564,167 @@ the matcher/Vision Lab are unaffected (this bug is in the capture pipeline only)
 - If anything still shows black after this fix, the new logs pin down whether acquisition
   (`generation=... plane:` line) or conversion (`... frame stored: ... bitmap:` lines) is
   the source — see `docs/SCREEN_CAPTURE.md` → "Diagnosing the landscape bug with logs".
+
+---
+
+# Sprint 1C — App-Only Capture & Circular Floating Control
+
+**Branch:** `sprint-1c-app-only-capture` · stacked on PR #3 (`sprint-1b-hero-recognition`, unmerged) · **PR:** #4 (base `sprint-1b-hero-recognition`)
+**Spec:** maintainer Sprint 1C brief · **Design:** `docs/superpowers/specs/2026-11-16-sprint-1c-app-only-capture-design.md`
+
+## What shipped
+
+- Single-app (API 34+ partial) capture is now the recommended MLBB mode; the system chooser
+  is never forced. `onCapturedContentVisibilityChanged` drives frame publication: while the
+  selected window is hidden, images are acquired and closed but never converted or published;
+  the last valid game frame (and, if pinned, the frozen snapshot) is preserved. Publication
+  resumes on visibility return unless a frame is pinned. Full-display capture remains the
+  documented fallback with an explicit no-notification-free-promise note.
+- One circular 52dp floating button (`TYPE_APPLICATION_OVERLAY`), shown only while a capture
+  session runs and only after the user grants the overlay permission (requested from the
+  capture screen, never at install time). Tap toggles LIVE (green) / FROZEN (orange) by calling
+  the shared `CaptureFreeze` path; 400 ms long-press arms drag; release snaps to the nearest
+  horizontal edge and persists normalized coordinates (DataStore). Rotation re-anchors it.
+- Overlay is non-focusable, exactly button-sized, and removed on every teardown path
+  (stop, error, revoke, task removal, resize failure).
+- Guidance rewritten: the "choose Entire screen" instruction is gone from the debug and
+  Vision Lab screens.
+- No recommendation UI, no panel, no menu, no accessibility service; `SYSTEM_ALERT_WINDOW`
+  declared, requested only on opt-in.
+
+## Verification
+
+- Implementation head `f992d45`: CI run 43784157138 — **886 unit tests, 0 failures / 0 errors / 0 skipped**;
+  strict lint green; `assembleDebug` green; APK `app-debug.apk`
+  sha256 `1d1f50629e145d48e64ed56d0cf74228e7d48d4c6f94fde81eb6c22fc4795810`. Docs-only commits after
+  it change no build inputs and are re-checked by CI on every push.
+- Instrumentation: compiled via `assembleAndroidTest` in CI; not executed — no KVM on the runner
+- Physical device (rows 33–43 of `docs/TESTING_PHYSICAL_DEVICE.md`): NOT RUN — maintainer task;
+  in particular the overlay-vs-capture isolation finding (rows 34/35) is an on-device question
+  that CI cannot answer; no exclusion claim is made.
+
+## Known limitations / compatibility notes
+
+- API < 34: no visibility signal; app-only windows are undetectable — behavior degrades to
+  full-display semantics.
+- If the captured window is already hidden when a session starts, publication stays open
+  until Android's first visibility callback arrives (API 34+; typically milliseconds). The
+  gate defaults to open because full-display projections may never call the callback at all.
+- Full-display fallback may capture the shade/system UI/other apps/DraftLens; the freeze
+  controls still work.
+- Whether the overlay appears inside captures is unverified per device (see sprint doc).
+- A resume requested while MLBB is hidden flips the user's intent to LIVE and takes effect
+  when MLBB returns; publication stays gated while hidden (no black/DraftLens frames).
+- Resize during freeze is enforced by the pipeline's freeze gate (policy truth-table +
+  `CaptureVisibilityPolicyTest`) and by on-device rows 25/30; no synthetic-pixel
+  instrumented test exists — an ImageReader surface cannot be filled from a test Canvas.
+
+---
+
+# Sprint 1C — Follow-up fixes (notification Pause, permissions-only UI)
+
+**Branch:** `sprint-1c-app-only-capture` (stacked on PR #3, unmerged) · **PR:** #4
+
+## Root cause of the overlay misbehaving during app-only capture
+
+Full trace (callback → policy → pipeline → freeze → overlay) shows the overlay's lifecycle
+was never coupled to capture visibility — render, touch and window lifetime have no frame
+input. Three real defects were causing the observed "frozen" control:
+
+1. silent no-op tap on `NoFrame` in fresh app-only sessions (nothing published yet);
+2. overlay glyph and notification derived only from `frozenFrame`, so a non-pin publication
+   block (PAUSED) showed LIVE/green everywhere while publishing nothing;
+3. no single derivation for "is live publication happening" across surfaces.
+
+Fixed by: unified `CapturePublishState` (publishStateFor / publishActionFor /
+floatingTapFor) shared by notification and overlay; combined frozen-frame + session-state
+collector; toast feedback on `NoFrame`; OEM/immersive-game overlay coverage documented as a
+hardware finding (device rows 44–53, NOT RUN), with no masking or mode fallback shipped.
+
+## Notification: Freeze → Pause
+
+Stop + one state action: Pause (LIVE) / Resume (PAUSED or FROZEN). Pause maps onto the
+existing `CaptureStatus.PAUSED` pipeline gate — no second projection, no second state, latest
+valid frame preserved. Resume = `resumeLive()` + `setPaused(false)`.
+
+## UI cleanup
+
+General instructions removed: capture-mode tutorial card, floating-control tutorial card,
+in-game freeze help texts, stale Sprint-0 marker. Kept: notification permission (request,
+status, settings action) and overlay permission (request, status, settings action) in one
+compact card.
+
+## Verification
+
+- Implementation head `130ce6c`: CI run 43922482183 — **904 unit tests, 0 failures / 0 errors / 0 skipped**;
+  strict lint green; `assembleAndroidTest` green; `assembleDebug` green; APK `app-debug.apk`
+  sha256 `48b510673919fe2caa9c906747d9dc766eb27bb170c589f67b58c9a175dd7b72`. Docs-only commits after
+  it change no build inputs and are re-checked by CI on every push.
+- Instrumented tests: compiled via `assembleAndroidTest`; not executed (no KVM).
+- Physical device rows 44–53: **NOT RUN** — see `docs/TESTING_PHYSICAL_DEVICE.md`.
+
+---
+
+# Sprint 1C — Single-app first-frame bug fix
+
+**Branch:** `sprint-1c-app-only-capture` (stacked on PR #3, unmerged) · **PR:** #4
+
+## Root cause (code-level evidence)
+
+The Sprint 1B capture path had no visibility gate. Sprint 1C introduced one and registered
+`MediaProjection.Callback` **before** `FramePipeline.start()`, `createVirtualDisplay()` and
+`CaptureStateHolder.beginCapture()`. On single-app capture both callbacks can arrive in
+that STARTING window:
+
+1. `onCapturedContentVisibilityChanged(false)` — the selected MLBB window is hidden while
+   the user is still in DraftLens. With the old boolean gate, that value either got
+   overwritten by `pipeline.start()`'s unconditional `true` or closed the gate before any
+   frame existed. A missed/first-only callback leaves publication blocked with no valid
+   frame to protect — the "No frame captured yet" toast.
+2. `onCapturedContentResize(W,H)` with the *selected app's* dimensions — `recreateDisplay`
+   either ignored it (status STARTING) or terminated the session as "VirtualDisplay
+   disappeared during resize" when it arrived before the VirtualDisplay existed. The
+   reader stayed at DraftLens' window metrics.
+3. `frameJob` also dropped frames published before `beginCapture()` from the holder.
+
+This is one ordering defect across both callbacks, not three unrelated bugs: startup events
+were not buffered and the gate's initial boolean could be confused with a real callback.
+
+## Diagnostics (added before changing the policy)
+
+`CaptureDiagnostics` rate-limits every event key (first 4 + every 20; no pixel data).
+`CaptureSessionService` logs callback seq/value/pipelineInitialized/status and resize
+seq/dimensions/readiness. `FramePipeline` logs acquisition count, image dimensions,
+generation, isActive/generationCurrent/frozen/contentVisible, the exact gate-reject reason,
+sampling accept/reject, conversion success/failure and bitmap dimensions, publication and
+holder delivery. `freezeAndSnapshot` logs the state behind `NoFrame`. These log lines are
+the evidence the maintainer needs to answer: "did ImageReader receive images that our code
+rejected, or did the platform deliver none?" — see `docs/TESTING_PHYSICAL_DEVICE.md`,
+"Focused first-frame test".
+
+## Fix
+
+- `CaptureVisibilityPolicy` now uses explicit `UNKNOWN` / `VISIBLE` / `HIDDEN`. UNKNOWN
+  deliberately allows publication (full-display never calls back; an early single-app
+  `false` must not block the first frame). The first published frame promotes
+  UNKNOWN → VISIBLE, after which `false` is authoritative and protects the valid frame.
+  The policy is owned by the service, so callbacks before pipeline creation are preserved;
+  stale-session callbacks are rejected; duplicate callbacks are idempotent.
+- `FramePipeline` no longer resets visibility in `start()`/`prepareResize`; it consults the
+  injected policy, promotes on publish, and no longer duplicates callback state.
+- `PendingResize` buffers the latest valid captured-content dimensions during startup.
+  `initializeProjection` sizes both ImageReader and VirtualDisplay from the buffered value
+  when present, applies any later value after `beginCapture()`, stays idempotent, and no
+  longer fails the session for a resize that arrived before the VirtualDisplay existed.
+- `frameJob` records every published frame (the pipeline clears `latestFrame` on stop).
+
+## Verification
+
+- Implementation head `3c7b58c`: CI run 43936524131 — **926 unit tests, 0 failures / 0 errors / 0 skipped**;
+  strict lint green; `assembleAndroidTest` green; `assembleDebug` green; APK `app-debug.apk`
+  sha256 `ade9ec10c5d6b9d4e372b325e6b521f87170d0fa5273c9b30e9ea9063a763070`. Docs-only commits
+  after it change no build inputs and are re-checked by CI on every push.
+- Instrumented tests: compiled, not executed (no KVM on the runner).
+- Physical device: the A–E first-frame checklist and rows 44–53 of
+  `docs/TESTING_PHYSICAL_DEVICE.md` are **NOT RUN**. This fix is not claimed to work on a
+  device from JVM tests or CI alone.

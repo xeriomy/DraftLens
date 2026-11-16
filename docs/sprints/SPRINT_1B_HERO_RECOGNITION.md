@@ -32,6 +32,11 @@ This branch now also contains the fixes for the PR #3 review findings:
 
 ## Capturing Mobile Legends: the freeze workflow
 
+> **Superseded by Sprint 1C** (`docs/sprints/SPRINT_1C_APP_ONLY_CAPTURE.md`): prefer
+> **Single app / app window → Mobile Legends** when offered; the freeze is now primarily
+> the circular floating button (rows 33–43 of `docs/TESTING_PHYSICAL_DEVICE.md`). The
+> full-display guidance below remains valid as the fallback.
+
 1. Open DraftLens → **Debug Capture**. When Android asks what to capture, choose
    **Entire screen / full device display**. App-window capture shows the DraftLens screen, not
    the game, and cannot support this workflow. (The app says this on screen too.)

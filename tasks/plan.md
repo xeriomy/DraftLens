@@ -142,7 +142,7 @@ reference-loader ownership) and wire the freeze workflow through the capture arc
 No recommendation features, no overlays, no automation, PR stays draft and unmerged.
 
 ### Work items in order
-- [x] Freeze a game frame from the notification (`CaptureFreeze`, `ACTION_FREEZE` /
+- [x] Freeze a game frame from the notification (`CaptureFreeze`, `ACTION_FREEZE` (superseded: notification now issues Pause) /
       `ACTION_RESUME_LIVE`, `FramePipeline` freeze gate, independently owned snapshot via
       `FrameSnapshots`, FROZEN notification with Resume action, in-app Resume unchanged)
 - [x] Full-device-capture guidance; POST_NOTIFICATIONS handling; freeze actions in the
@@ -184,3 +184,59 @@ No recommendation features, no overlays, no automation, PR stays draft and unmer
 See `docs/VISION_TESTING.md` for the exact CI runs, test totals and what was and was not
 executed. The authoring host remains aarch64, so the CI is the build of record.
 Physical-device verification of the freeze workflow is pending.
+
+## Sprint 1C — App-only capture & circular floating control
+Objective: let the user freeze/resume the live MLBB capture without leaving the game —
+prefer single-app (partial) capture, keep the last valid game frame when MLBB is hidden,
+and add exactly one circular overlay button. No recommendation UI, no panels, no automation.
+PR #4 stacked on PR #3 (`sprint-1b-hero-recognition`); nothing merges automatically;
+Sprint 1B history intact.
+
+### Work items in order
+- [x] Pure visibility policy + truth-table tests (hidden ⇒ nothing publishes; frozen wins over visible)
+- [x] `FramePipeline` gate: images acquired/closed but never converted while hidden;
+      publish-time synchronized re-check; API-34 `onCapturedContentVisibilityChanged` in the
+      existing CAPTURING guard
+- [x] Freeze-while-hidden / resume-while-hidden semantics: last valid frame preserved;
+      LIVE intent remembered across hidden periods; no second VirtualDisplay/projection ever
+- [x] Overlay position math (normalized free-axis coords, edge snap) + JVM tests
+- [x] Overlay enablement decision + DataStore persistence (position + enabled)
+- [x] 52dp circular `TYPE_APPLICATION_OVERLAY` button: tap = Freeze/Resume (green/orange,
+      white glyph), 400 ms long-press drag, edge snap, rotation re-anchor, non-focusable
+- [x] Service attach/detach only during capture, every teardown path removes it;
+      `ACTION_OVERLAY_UPDATE` re-sync; manifest declares `SYSTEM_ALERT_WINDOW`, requested
+      only from the enable toggle
+- [x] Two-mode capture guidance in the debug screen + Vision Lab; denial path documented
+      (capture + in-app Freeze/Resume unaffected)
+- [x] Instrumentation test for overlay attach/remove (compile-only in CI)
+- [x] JVM sequence tests: hidden→freeze→resume→visible; explicit freeze blocks auto-resume
+- [ ] CI green record, APK digest, device rows 33–43 NOT RUN (maintainer)
+- [ ] PR #4 description + report; physical-device acceptance checklist is maintainer-run
+
+## Sprint 1C — Follow-up fixes (this revision)
+Objective: make the floating control robust for app-only capture and slim the in-app UI to
+permissions only; replace the notification Freeze action with Pause/Resume on the shared state.
+
+### Work items
+- [x] Root-cause pass on the app-only overlay: no visibility↔overlay lifecycle coupling found;
+      fixes are the silent-tap feedback (toast on NoFrame) and a single `CapturePublishState`
+      derivation shared by notification and overlay (pin wins over pause for presentation)
+- [x] Unified `CapturePublishState` (LIVE/PAUSED/FROZEN) with JVM-tested decision matrix
+- [x] Notification actions: Stop + Pause (LIVE) / Stop + Resume (PAUSED/FROZEN); Pause maps to
+      the existing CaptureStatus.PAUSED gate; Resume clears pin + pause; combined
+      frozen-frame + session-state collector keeps notification and overlay in sync
+- [x] UI slim-down: removed tutorial cards / in-game help texts; one compact Permissions card
+      (notification permission + overlay permission, status + grant/settings actions)
+- [x] Tests: PublishStateMatrixTest, holder pause-preservation tests, sequence pause test,
+      instrumented overlay publication-flip attach test
+- [ ] CI green record; physical-device rows 44–53 NOT RUN
+
+## Sprint 1C — single-app first-frame fix (this revision)
+- [x] Diagnostics first: `CaptureDiagnostics` + per-stage callback/acquisition/gate logs
+- [x] Service-owned `CaptureVisibilityPolicy` with UNKNOWN/VISIBLE/HIDDEN; early callbacks
+      preserved; UNKNOWN open; first frame promotes to VISIBLE; stale callbacks rejected
+- [x] Service-owned `PendingResize`: early captured-content dimensions retained, applied to
+      both ImageReader and VirtualDisplay, idempotent; no session kill before VD creation
+- [x] Pipeline no longer resets the gate; holder records frames published during STARTING
+- [x] JVM tests: early callbacks, UNKNOWN semantics, promotions, pending-resize retention,
+      sequences; device A–E checklist added (NOT RUN)

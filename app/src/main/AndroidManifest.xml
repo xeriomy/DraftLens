@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Floating freeze button; requested only when the user enables it (TYPE_APPLICATION_OVERLAY). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- Hero catalog download (public, static, HTTPS only). No user data is uploaded. -->
     <uses-permission android:name="android.permission.INTERNET" />
 

@@ -91,8 +91,9 @@ MediaProjection -> VirtualDisplay -> ImageReader -> capture HandlerThread
 The freeze workflow is a side channel on the same pipeline — never a second capture system:
 
 ```text
-"Freeze current frame" (notification) or in-app Freeze
-  -> CaptureSessionService ACTION_FREEZE (or source.freeze())
+in-app Freeze / the floating button (pinning via CaptureFreeze) or the Vision Lab Freeze button
+  -> CaptureFreeze.freezeCurrentFrame() (the notification issues Pause = ACTION_PAUSE)
+
   -> CaptureFreeze.freezeCurrentFrame()
   -> FramePipeline freezes publication; copies the latest published frame
   -> CaptureStateHolder.frozenFrame (independently owned copy, at most one)

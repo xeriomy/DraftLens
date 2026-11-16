@@ -124,3 +124,30 @@ PASS** (device details not supplied). The MediaProjection lifecycle matrix is **
 - [ ] Physical-device smoke of the freeze workflow; on-device accuracy evaluation;
       threshold/heuristic calibration (pending)
 - [ ] Physical-device verification of the landscape capture fix in MLBB (rows 23–32) (pending)
+
+## Sprint 1C: App-Only Capture & Circular Floating Control
+- [x] Task 1: Pure visibility gate (`CaptureVisibilityPolicy`) + JVM truth table (`d68f7bc`)
+- [x] Task 2: Pipeline visibility gate; `onCapturedContentVisibilityChanged` (API 34+) wired into the CAPTURING guard (`6eaceb9`)
+- [x] Task 3: Overlay position math (normalized/free-axis, edge snap) + JVM tests (`ffc4f5e`)
+- [x] Task 4: Overlay enablement decision + DataStore keys (`48e0e11`)
+- [x] Task 5: 52dp circular overlay button (`FloatingControlView`/`OverlayController`), long-press drag, tap toggle (`f88cce4`)
+- [x] Task 6: Service attach/detach on every teardown path, rotation re-anchor, enable card + two-mode capture guidance, manifest `SYSTEM_ALERT_WINDOW` (`494df62`)
+- [x] Task 7: Instrumented overlay attach/remove test (compile-only) (`c6edb52`)
+- [x] Task 8: Visibility/freeze/stop sequence tests (`94662b3`)
+- [x] Task 9: Documentation (sprint doc, capture docs, device matrix rows 33–43) (this branch)
+- [x] Task 10: CI green record (run 43784157138 at `f992d45`: 886 unit tests, 0 failures; APK sha256 `1d1f…`; stacked PR #4); review findings M1/M2 fixed
+Verification runs in GitHub Actions because the authoring host has no Android toolchain (below). Physical-device rows 33–43 are **NOT RUN**.
+
+## Sprint 1C follow-up: notification Pause, permissions-only UI, overlay independence
+- [x] Root-cause trace + CapturePublishState unification (`CapturePublishState.kt`)
+- [x] Notification Freeze → Pause (LIVE → Pause, PAUSED/FROZEN → Resume); combined state collector
+- [x] Overlay glyph/tap driven by the shared publish state; toast on NoFrame
+- [x] Permissions-only UI (notification + overlay); tutorial and help text removed
+- [x] Docs sync + device rows 44–53; tests added (JVM + compile-only instrumented)
+- [x] Task 10: CI green record (run 43922482183 at `130ce6c`: 904 unit tests, 0 failures; APK sha256 `48b5…`); report
+
+## Sprint 1C single-app first-frame fix
+- [x] Diagnostics before policy change (`CaptureDiagnostics`)
+- [x] Explicit visibility state model + pending captured-content resize; startup ordering fixed
+- [x] JVM regression tests + physical-device A–E checklist (NOT RUN)
+- [x] Task 10: CI green record (run 43936524131 at `3c7b58c`: 926 unit tests, 0 failures; APK sha256 `ade9…`); report

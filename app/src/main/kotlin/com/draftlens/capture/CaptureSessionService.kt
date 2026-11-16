@@ -25,7 +25,12 @@ import androidx.core.app.ServiceCompat
 import com.draftlens.MainActivity
 import com.draftlens.R
 import com.draftlens.models.CaptureStatus
+import com.draftlens.overlay.OverlayController
+import com.draftlens.overlay.OverlayEnablement
 import com.draftlens.vision.model.FrameRotation
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -50,16 +55,25 @@ class CaptureSessionService : Service() {
     )
     private val startupExecutor = CaptureStartupExecutor<MediaProjection>()
     private lateinit var pipeline: FramePipeline
+    /** Service-owned so visibility callbacks before pipeline creation are never lost. */
+    private val visibilityPolicy = CaptureVisibilityPolicy()
+    /** Service-owned so an early selected-app resize callback is never lost. */
+    private val pendingResize = PendingResize()
 
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var displayListener: DisplayManager.DisplayListener? = null
     private var captureJob: Job? = null
     private var frameJob: Job? = null
-    private var frozenJob: Job? = null
+    private var publishedStateJob: Job? = null
     private var foregroundPromoted = false
+    /** Non-null only while the floating control may be attached (user-enabled + permitted + capturing). */
+    private var overlayController: OverlayController? = null
     /** Increments once per capture session; tags every structured log line. */
     private var sessionCounter = 0
+    private var visibilityCallbackSeq = 0L
+    private var resizeCallbackSeq = 0L
+    private val diagnostics = CaptureDiagnostics()
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -68,17 +82,59 @@ class CaptureSessionService : Service() {
         }
 
         override fun onCapturedContentResize(width: Int, height: Int) {
+            resizeCallbackSeq += 1
+            Log.i(
+                TAG,
+                "session=$sessionCounter resize-callback seq=$resizeCallbackSeq ${width}x${height} " +
+                    "status=${CaptureStateHolder.state.value.status} virtualDisplayReady=${virtualDisplay != null} " +
+                    "pipelineReady=${::pipeline.isInitialized && pipeline.surface() != null}",
+            )
             // The captured-content dimensions are authoritative; they are not the same as
             // the display-window metrics the session started with (that is the landscape bug).
-            recreateDisplay(width, height, source = "captured-content-resize")
+            val seq = pendingResize.offer(width, height)
+            if (CaptureStateHolder.state.value.status == CaptureStatus.CAPTURING && virtualDisplay != null) {
+                applyPendingResize()
+            } else {
+                Log.i(TAG, "session=$sessionCounter resize buffered seq=$seq (status=${CaptureStateHolder.state.value.status} virtualDisplayReady=${virtualDisplay != null})")
+            }
+        }
+
+        /**
+         * API 34+: the window chosen in the chooser left or returned to the screen.
+         * The projection stays valid: while hidden, images are acquired and closed but
+         * never published, so DraftLens/shade/other apps can never replace the last
+         * valid game frame. Returning to MLBB reopens publication unless a frame is pinned.
+         * Fed to the pipeline regardless of session status: a pause must not stale the
+         * gate (a hide during PAUSED would otherwise publish foreign frames on resume).
+         */
+        override fun onCapturedContentVisibilityChanged(isVisible: Boolean) {
+            visibilityCallbackSeq += 1
+            Log.i(
+                TAG,
+                "session=$sessionCounter visibility-callback seq=$visibilityCallbackSeq visible=$isVisible " +
+                    "pipelineInitialized=${::pipeline.isInitialized} status=${CaptureStateHolder.state.value.status} " +
+                    "virtualDisplayReady=${virtualDisplay != null}",
+            )
+            if (!::pipeline.isInitialized) {
+                Log.i(TAG, "session=$sessionCounter visibility callback arrived before pipeline init: BUFFERED by service policy")
+            }
+            val transition = visibilityPolicy.onContentVisibilityChanged(isVisible, sessionCounter)
+            Log.i(
+                TAG,
+                "session=$sessionCounter visibility applied seq=${transition.sequence} accepted=${transition.accepted} " +
+                    "${transition.previous.name}->${transition.current.name} changed=${transition.changed} " +
+                    "state=${CaptureStateHolder.state.value.status}",
+            )
         }
     }
 
     override fun onCreate() {
         super.onCreate()
-        pipeline = FramePipeline(sampler) {
-            CaptureStateHolder.state.value.status == CaptureStatus.CAPTURING
-        }
+        pipeline = FramePipeline(
+            sampler,
+            isActive = { CaptureStateHolder.state.value.status == CaptureStatus.CAPTURING },
+            visibility = visibilityPolicy,
+        )
         createNotificationChannel()
     }
 
@@ -134,33 +190,23 @@ class CaptureSessionService : Service() {
                 CaptureStateHolder.setPaused(false)
                 START_NOT_STICKY
             }
-            ACTION_FREEZE -> {
-                // Never re-promotes, never restarts MediaProjection: no-op without an active pipeline.
-                if (!CaptureFreeze.hasActivePipeline()) {
-                    Log.i(TAG, "Freeze command ignored: no active capture session")
-                    stopSelf() // do not linger for a stale command
-                    return START_NOT_STICKY
-                }
-                when (val outcome = CaptureFreeze.freezeCurrentFrame()) {
-                    is FreezeOutcome.Frozen ->
-                        Log.i(TAG, "Freeze command honoured (${outcome.frame.width}x${outcome.frame.height})")
-                    FreezeOutcome.AlreadyFrozen ->
-                        Log.i(TAG, "Freeze command: a frame is already frozen; keeping it")
-                    FreezeOutcome.NoFrame ->
-                        Log.i(TAG, "Freeze command ignored: no frame captured yet")
-                    FreezeOutcome.NoPipeline -> {
-                        Log.i(TAG, "Freeze command ignored: no active capture session")
-                        stopSelf() // do not linger for a stale command
-                    }
-                }
-                START_NOT_STICKY
-            }
             ACTION_RESUME_LIVE -> {
+                // Unified resume: clears any pinned frame AND any pause. Safe in either state.
                 CaptureFreeze.resumeLive()
+                CaptureStateHolder.setPaused(false)
                 if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING &&
                     CaptureStateHolder.state.value.status != CaptureStatus.PAUSED
                 ) {
                     stopSelf() // stale action after capture stopped; nothing to resume into
+                }
+                START_NOT_STICKY
+            }
+            ACTION_OVERLAY_UPDATE -> {
+                // Re-evaluates the floating control against the current preference/permission/session state.
+                scope.launch { syncFloatingControl() }
+                val status = CaptureStateHolder.state.value.status
+                if (status != CaptureStatus.CAPTURING && status != CaptureStatus.PAUSED && status != CaptureStatus.STARTING) {
+                    stopSelf() // nothing to update; don't linger for a stale refresh
                 }
                 START_NOT_STICKY
             }
@@ -176,6 +222,8 @@ class CaptureSessionService : Service() {
         }
 
         sessionCounter += 1
+        visibilityPolicy.resetForNewSession(sessionCounter)
+        pendingResize.clear()
         sampler.setIntervalMs(intervalMs)
         releaseCaptureResources(releaseForeground = false)
 
@@ -197,16 +245,21 @@ class CaptureSessionService : Service() {
                         proj.registerCallback(projectionCallback, null)
 
                         val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                        val (captureWidth, captureHeight) = captureDimensions(wm)
+                        val (windowWidth, windowHeight) = captureDimensions(wm)
+                        // An early captured-content resize carries the selected app's real size.
+                        // Use it for BOTH the ImageReader and the VirtualDisplay from the start.
+                        val (captureWidth, captureHeight) = pendingResize.peek() ?: (windowWidth to windowHeight)
                         val dpi = resources.configuration.densityDpi
                         val displayRotation = currentDisplayRotation()
-                        Log.i(TAG, "session=$sessionCounter capture-start: dimensions=${captureWidth}x${captureHeight} dpi=$dpi rotation=$displayRotation source=windowMetrics")
+                        Log.i(TAG, "session=$sessionCounter capture-start: dimensions=${captureWidth}x${captureHeight} dpi=$dpi rotation=$displayRotation source=${if (pendingResize.peek() != null) "pending-captured-content-resize" else "windowMetrics"} windowMetrics=${windowWidth}x${windowHeight} visibility=${visibilityPolicy.currentState().name} visibilitySeq=${visibilityPolicy.sequence()}")
 
-                        pipeline.start(captureWidth, captureHeight, dpi, displayRotation)
+                        pipeline.start(captureWidth, captureHeight, dpi, displayRotation, sessionId = sessionCounter)
                         CaptureFreeze.attachPipeline(pipeline)
                         createVirtualDisplay(proj, captureWidth, captureHeight, dpi)
                         registerDisplayListener()
                         CaptureStateHolder.beginCapture(captureWidth, captureHeight, dpi)
+                        applyPendingResize() // idempotent no-op when the early value was already used
+                        attachFloatingControl()
                         collectFrames()
                     }
                 )
@@ -218,6 +271,47 @@ class CaptureSessionService : Service() {
                 terminateCaptureWithError("Failed to start capture: ${e.message}")
             }
         }
+    }
+
+    /** Creates the overlay controller and asks it to show; the controller re-checks the
+     *  preference and the Android overlay permission asynchronously. No-op when present. */
+    private fun attachFloatingControl() {
+        if (overlayController != null) return
+        val app = application as? com.draftlens.DraftLensApp ?: run {
+            Log.w(TAG, "floating control unavailable: unexpected application type")
+            return
+        }
+        val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val (width, height) = captureDimensions(wm)
+        overlayController = OverlayController(applicationContext, app.preferences, scope)
+        overlayController?.show(width, height)
+    }
+
+    /** Adds or removes the overlay to match preference + permission + session state. */
+    private suspend fun syncFloatingControl() {
+        val app = application as? com.draftlens.DraftLensApp ?: return
+        val enabled = runCatching { app.preferences.floatingControlEnabled.first() }.getOrElse { false }
+        val canDraw = runCatching { android.provider.Settings.canDrawOverlays(this) }.getOrDefault(false)
+        val running = CaptureStateHolder.state.value.status == CaptureStatus.CAPTURING ||
+            CaptureStateHolder.state.value.status == CaptureStatus.PAUSED
+        if (OverlayEnablement.shouldAttachOverlay(enabled, canDraw, running)) {
+            if (overlayController == null) attachFloatingControl()
+        } else {
+            Log.i(TAG, "floating control detached (enabled=$enabled canDraw=$canDraw running=$running)")
+            overlayController?.detach()
+            overlayController = null
+        }
+    }
+
+    /** Applies the latest buffered selected-app dimensions once the session is ready. */
+    private fun applyPendingResize() {
+        val pending = pendingResize.consume() ?: return
+        if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING || virtualDisplay == null) {
+            Log.w(TAG, "session=$sessionCounter pending resize ${pending.first}x${pending.second} could not be applied yet; keeping it buffered")
+            pendingResize.offer(pending.first, pending.second)
+            return
+        }
+        recreateDisplay(pending.first, pending.second, source = "pending-captured-content-resize")
     }
 
     private fun captureDimensions(wm: WindowManager): Pair<Int, Int> {
@@ -263,7 +357,7 @@ class CaptureSessionService : Service() {
         }
 
         createNotificationChannel()
-        val notification = buildNotification()
+        val notification = buildNotification(currentPublishState())
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ServiceCompat.startForeground(
@@ -293,16 +387,29 @@ class CaptureSessionService : Service() {
         frameJob?.cancel()
         frameJob = scope.launch {
             pipeline.latestFrame.collectLatest { frame ->
-                if (frame != null && CaptureStateHolder.state.value.status == CaptureStatus.CAPTURING) {
+                if (frame != null) {
+                    // The pipeline owns freshness: stop() clears latestFrame. Do not drop a
+                    // frame that was published during STARTING, before beginCapture().
                     CaptureStateHolder.recordFrame(frame)
+                    val delivered = diagnostics.sample("holder-delivered")
+                    if (diagnostics.shouldLog(delivered)) {
+                        Log.i(TAG, "session=$sessionCounter recordFrame delivered count=$delivered frame=${frame.width}x${frame.height} id=${frame.frame.id.value} status=${CaptureStateHolder.state.value.status}")
+                    }
                 }
             }
         }
-        frozenJob?.cancel()
-        frozenJob = scope.launch {
-            CaptureStateHolder.frozenFrame.collectLatest { frozen ->
-                updateNotificationState(frozen != null)
-            }
+        publishedStateJob?.cancel()
+        publishedStateJob = scope.launch {
+            combine(
+                CaptureStateHolder.frozenFrame,
+                CaptureStateHolder.state,
+            ) { pin, st -> publishStateFor(pinInPlace = pin != null, isPaused = st.isPaused) }
+                .distinctUntilChanged()
+
+                .collectLatest { publishState ->
+                    updateNotificationState(publishState)
+                    overlayController?.setNotLive(publishStateBlocksPublication(publishState))
+                }
         }
     }
 
@@ -336,8 +443,12 @@ class CaptureSessionService : Service() {
     private fun recreateDisplay(width: Int, height: Int, source: String) {
         val densityDpi = resources.configuration.densityDpi
         val display = virtualDisplay ?: run {
-            Log.e(TAG, "session=$sessionCounter resize requested ($source) but VirtualDisplay is missing")
-            failProjectionSession("VirtualDisplay disappeared during resize", null)
+            if (CaptureStateHolder.state.value.status == CaptureStatus.CAPTURING) {
+                Log.e(TAG, "session=$sessionCounter resize requested ($source) but VirtualDisplay is missing")
+                failProjectionSession("VirtualDisplay disappeared during resize", null)
+            } else {
+                Log.i(TAG, "session=$sessionCounter resize requested ($source) ${width}x${height} before VirtualDisplay creation; buffered")
+            }
             return
         }
         if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING) {
@@ -421,6 +532,8 @@ class CaptureSessionService : Service() {
                         Log.i(TAG, "session=$sessionCounter display metrics changed ${current.displayWidth}x${current.displayHeight} -> ${width}x${height}; resyncing capture size")
                         recreateDisplay(width, height, source = "display-listener")
                     }
+                    // Keep the overlay anchored to the (possibly rotated) free axis.
+                    overlayController?.onDisplayMetricsChanged(width, height)
                 }
             }
         }
@@ -461,13 +574,17 @@ class CaptureSessionService : Service() {
     }
 
     private fun releaseCaptureResources(releaseForeground: Boolean) {
-        Log.i(TAG, "session=$sessionCounter release: captureJob/frameJob/frozenJob cancelled=${captureJob != null || frameJob != null || frozenJob != null}")
+        pendingResize.clear()
+        // The overlay goes first: after stop the control has nothing to toggle and must never linger.
+        overlayController?.detach()
+        overlayController = null
+        Log.i(TAG, "session=$sessionCounter release: captureJob/frameJob/publishedStateJob cancelled=${captureJob != null || frameJob != null || publishedStateJob != null}")
         captureJob?.cancel()
         captureJob = null
         frameJob?.cancel()
         frameJob = null
-        frozenJob?.cancel()
-        frozenJob = null
+        publishedStateJob?.cancel()
+        publishedStateJob = null
         try { virtualDisplay?.release() } catch (e: Exception) { Log.w(TAG, "session=$sessionCounter VirtualDisplay release failed", e) }
         if (virtualDisplay != null) Log.i(TAG, "session=$sessionCounter virtual-display released")
         virtualDisplay = null
@@ -529,8 +646,11 @@ class CaptureSessionService : Service() {
             .createNotificationChannel(channel)
     }
 
-    /** Re-posts the ongoing notification with the current LIVE/FROZEN state and its action. */
-    private fun updateNotificationState(frozen: Boolean) {
+    private fun currentPublishState(): CapturePublishState =
+        publishStateFor(pinInPlace = CaptureStateHolder.frozenFrame.value != null, isPaused = CaptureStateHolder.state.value.isPaused)
+
+    /** Re-posts the ongoing notification with the current LIVE/PAUSED/FROZEN state and its actions. */
+    private fun updateNotificationState(publishState: CapturePublishState) {
         if (!foregroundPromoted) {
             Log.d(TAG, "Skipping notification update: service is not promoted")
             return
@@ -541,7 +661,7 @@ class CaptureSessionService : Service() {
         }
         try {
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-                .notify(NOTIFICATION_ID, buildNotification(frozen))
+                .notify(NOTIFICATION_ID, buildNotification(publishState))
         } catch (e: Exception) {
             Log.w(TAG, "Failed to update the capture notification", e)
         }
@@ -553,7 +673,7 @@ class CaptureSessionService : Service() {
             .areNotificationsEnabled()
     }.getOrDefault(true)
 
-    private fun buildNotification(frozen: Boolean = CaptureStateHolder.frozenFrame.value != null): Notification {
+    private fun buildNotification(publishState: CapturePublishState): Notification {
         val tapIntent = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java),
@@ -564,18 +684,26 @@ class CaptureSessionService : Service() {
             Intent(this, CaptureSessionService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val freezeIntent = PendingIntent.getService(
+        val pauseIntent = PendingIntent.getService(
             this, 2,
-            Intent(this, CaptureSessionService::class.java).setAction(ACTION_FREEZE),
+            Intent(this, CaptureSessionService::class.java).setAction(ACTION_PAUSE),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val resumeCaptureIntent = PendingIntent.getService(
+        val resumeIntent = PendingIntent.getService(
             this, 3,
             Intent(this, CaptureSessionService::class.java).setAction(ACTION_RESUME_LIVE),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val subText = if (frozen) getString(R.string.capture_frozen_subtext) else getString(R.string.capture_live_subtext)
-        val text = if (frozen) getString(R.string.capture_notification_frozen_text) else getString(R.string.capture_notification_text)
+        val subText = when (publishState) {
+            CapturePublishState.LIVE -> getString(R.string.capture_live_subtext)
+            CapturePublishState.PAUSED -> getString(R.string.capture_paused_subtext)
+            CapturePublishState.FROZEN -> getString(R.string.capture_frozen_subtext)
+        }
+        val text = when (publishState) {
+            CapturePublishState.LIVE -> getString(R.string.capture_notification_text)
+            CapturePublishState.PAUSED -> getString(R.string.capture_notification_paused_text)
+            CapturePublishState.FROZEN -> getString(R.string.capture_notification_frozen_text)
+        }
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.capture_notification_title))
             .setContentText(text)
@@ -584,10 +712,12 @@ class CaptureSessionService : Service() {
             .setContentIntent(tapIntent)
             .setOngoing(true)
             .setShowWhen(false)
-        if (frozen) {
-            builder.addAction(android.R.drawable.ic_media_play, getString(R.string.capture_resume_capture_action), resumeCaptureIntent)
-        } else {
-            builder.addAction(android.R.drawable.ic_menu_camera, getString(R.string.capture_freeze_action), freezeIntent)
+        // Exactly one of Pause/Resume — never both, never a stale Freeze action.
+        when (publishActionFor(publishState)) {
+            CapturePublishAction.PAUSE ->
+                builder.addAction(android.R.drawable.ic_media_pause, getString(R.string.capture_pause_action), pauseIntent)
+            CapturePublishAction.RESUME ->
+                builder.addAction(android.R.drawable.ic_media_play, getString(R.string.capture_resume_capture_action), resumeIntent)
         }
         return builder
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.capture_stop_action), stopIntent)
@@ -599,8 +729,8 @@ class CaptureSessionService : Service() {
         const val ACTION_STOP = "com.draftlens.action.STOP_CAPTURE"
         const val ACTION_PAUSE = "com.draftlens.action.PAUSE_CAPTURE"
         const val ACTION_RESUME = "com.draftlens.action.RESUME_CAPTURE"
-        const val ACTION_FREEZE = "com.draftlens.action.FREEZE_CAPTURE"
         const val ACTION_RESUME_LIVE = "com.draftlens.action.RESUME_LIVE_CAPTURE"
+        const val ACTION_OVERLAY_UPDATE = "com.draftlens.action.OVERLAY_UPDATE"
         const val EXTRA_RESULT_CODE = "extra_result_code"
         const val EXTRA_DATA = "extra_data"
         const val EXTRA_INTERVAL_MS = "extra_interval_ms"
@@ -623,5 +753,8 @@ class CaptureSessionService : Service() {
 
         fun resumeIntent(context: Context): Intent =
             Intent(context, CaptureSessionService::class.java).setAction(ACTION_RESUME)
+
+        fun overlayUpdateIntent(context: Context): Intent =
+            Intent(context, CaptureSessionService::class.java).setAction(ACTION_OVERLAY_UPDATE)
     }
 }

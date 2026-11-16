@@ -41,9 +41,16 @@ import com.draftlens.capture.CaptureController
 import com.draftlens.datastore.AppPreferencesRepository
 import com.draftlens.models.CaptureStatus
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
 import android.Manifest
 import android.os.Build
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.launch
 import com.draftlens.vision.model.android.BitmapFramePayload
 
 @Composable
@@ -68,8 +75,8 @@ fun DebugCaptureScreen(
         }
     }
 
-    // Notification permission: the capture notification carries the "Freeze current frame"
-    // action, so without it the MLBB freeze workflow is unreachable.
+    // Notification permission: the capture notification keeps a Freeze action, but the
+    // floating control and in-app Freeze/Resume work without it.
     var notificationsEnabled by remember { mutableStateOf(areCaptureNotificationsEnabled(activity)) }
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -88,10 +95,11 @@ fun DebugCaptureScreen(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("DraftLens — Capture Debug (Sprint 0)", color = Color.White, style = MaterialTheme.typography.titleLarge)
-        Text("Detection: Not implemented in Sprint 0", color = Color.Gray)
+        Text("DraftLens — Capture", color = Color.White, style = MaterialTheme.typography.titleLarge)
 
-        MobileLegendsCaptureGuide(
+        PermissionsCard(
+            activity = activity,
+            preferences = preferences,
             notificationsEnabled = notificationsEnabled,
             onEnableNotifications = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -192,47 +200,121 @@ fun DebugCaptureScreen(
     }
 }
 
-/** Guidance for the Mobile Legends freeze workflow and missing-notification handling. */
+/**
+ * The only two permissions DraftLens needs beyond the screen-capture consent: notifications
+ * (the capture notification carries Stop + Pause) and the overlay permission (the floating
+ * freeze button). Both show clear granted/denied status and a grant/open-settings action.
+ */
 @Composable
-private fun MobileLegendsCaptureGuide(
+private fun PermissionsCard(
+    activity: Activity,
+    preferences: AppPreferencesRepository,
     notificationsEnabled: Boolean,
     onEnableNotifications: () -> Unit,
 ) {
     val body = MaterialTheme.typography.bodySmall
+    var overlayGranted by remember { mutableStateOf(Settings.canDrawOverlays(activity)) }
+    var pendingEnable by remember { mutableStateOf(false) }
+    val floatingEnabledFlow = remember(preferences) {
+        preferences.floatingControlEnabled.catch { emit(false) }
+    }
+    val floatingEnabled by floatingEnabledFlow.collectAsState(initial = false)
+    val scope = rememberCoroutineScope()
+
+    // Returning from the Android overlay-permission settings screen resolves a pending enable exactly once.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        val granted = Settings.canDrawOverlays(activity)
+        overlayGranted = granted
+        if (pendingEnable) {
+            pendingEnable = false
+            if (granted) {
+                scope.launch {
+                    runCatching { preferences.setFloatingControlEnabled(true) }
+                        .onFailure { android.util.Log.w("DraftLens", "failed to persist floating control enable", it) }
+                    CaptureController.refreshOverlay(activity)
+                }
+            }
+        }
+    }
+
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text("Capturing Mobile Legends: Bang Bang", style = MaterialTheme.typography.titleMedium)
-            Text("1. Tap Start Capture.", style = body)
-            Text(
-                "2. When Android asks what to capture, choose Entire screen / full device display — " +
-                    "not the DraftLens app window. App-window capture cannot see the game, " +
-                    "so the frozen frame would show this app instead of MLBB.",
-                style = body,
-            )
-            Text(
-                "3. Open Mobile Legends and wait for the desired draft screen.",
-                style = body,
-            )
-            Text(
-                "4. Pull down the notification shade and tap “Freeze current frame” on the " +
-                    "DraftLens capture notification. The latest game frame is kept in memory — no need to leave the game.",
-                style = body,
-            )
-            Text(
-                "5. Return to DraftLens. Vision Lab shows the frozen MLBB frame, not this screen. " +
-                    "Tap Resume there, or “Resume live capture” in the notification, to go back to live capture.",
-                style = body,
-            )
-            if (!notificationsEnabled) {
-                Text(
-                    "Notifications are disabled: the “Freeze current frame” action is not reachable from the shade while in game.",
-                    style = body,
-                    color = MaterialTheme.colorScheme.error,
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // --- Notifications ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Notifications", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Needed for the capture notification’s Stop and Pause actions while you are in the game.",
+                        style = body,
+                    )
+                    Text(
+                        if (notificationsEnabled) "Status: Allowed" else "Status: Not allowed",
+                        style = body,
+                        color = if (notificationsEnabled) Color(0xFF7DDCA0) else MaterialTheme.colorScheme.error,
+                    )
+                }
+                if (!notificationsEnabled) {
+                    TextButton(onClick = onEnableNotifications) { Text("Enable") }
+                }
+            }
+
+            // --- Floating overlay button ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Floating freeze button", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Needed to freeze/resume the game frame from a small button while in MLBB. " +
+                            "Capture works fully without it.",
+                        style = body,
+                    )
+                    Text(
+                        if (overlayGranted) "Status: Allowed" else "Status: Not allowed",
+                        style = body,
+                        color = if (overlayGranted) Color(0xFF7DDCA0) else MaterialTheme.colorScheme.error,
+                    )
+                }
+                Switch(
+                    checked = floatingEnabled,
+                    onCheckedChange = { checked ->
+                        if (checked) {
+                            if (Settings.canDrawOverlays(activity)) {
+                                scope.launch {
+                                    runCatching { preferences.setFloatingControlEnabled(true) }
+                                        .onFailure { android.util.Log.w("DraftLens", "failed to persist floating control enable", it) }
+                                    CaptureController.refreshOverlay(activity)
+                                }
+                            } else {
+                                // The capture keeps working without the button; enable it once granted.
+                                pendingEnable = true
+                                activity.startActivity(
+                                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                                        .setData(Uri.parse("package:${activity.packageName}")),
+                                )
+                            }
+                        } else {
+                            scope.launch {
+                                runCatching { preferences.setFloatingControlEnabled(false) }
+                                    .onFailure { android.util.Log.w("DraftLens", "failed to persist floating control disable", it) }
+                                CaptureController.refreshOverlay(activity)
+                            }
+                        }
+                    },
                 )
-                TextButton(onClick = onEnableNotifications) { Text("Enable notifications") }
+            }
+            if (!overlayGranted) {
+                TextButton(onClick = {
+                    pendingEnable = true
+                    activity.startActivity(
+                        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                            .setData(Uri.parse("package:${activity.packageName}")),
+                    )
+                }) { Text("Open Android overlay settings") }
             }
         }
     }
