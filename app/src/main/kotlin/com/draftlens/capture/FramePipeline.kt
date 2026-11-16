@@ -26,7 +26,9 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class FramePipeline(
     private val sampler: FrameSampler,
-    private val isActive: () -> Boolean = { true }
+    private val isActive: () -> Boolean = { true },
+    /** Owned by the service so callbacks before pipeline.start() are never lost. */
+    private val visibility: CaptureVisibilityPolicy = CaptureVisibilityPolicy(),
 ) {
     private var imageReader: ImageReader? = null
     private var handlerThread: HandlerThread? = null
@@ -43,29 +45,12 @@ class FramePipeline(
     @Volatile
     private var frozen = false
 
-    /**
-     * Gate for app-only (single-app) captures: while the selected window is hidden,
-     * images are acquired and closed but never converted or published, so DraftLens,
-     * the shade or other apps can never overwrite the last valid game frame.
-     */
-    private val visibility = CaptureVisibilityPolicy()
-
     /** Bounded, event-keyed diagnostics (first 4 + every 20 per event; never pixels). */
     private val diagnostics = CaptureDiagnostics()
 
     /** Session id copied from the service for every structured log line. */
     @Volatile
     private var sessionId: Int = 0
-
-    /**
-     * Feeds the captured-content visibility signal (API 34+) into the publication gate.
-     * Full-display captures never report hidden; the gate stays open for them.
-     */
-    fun onContentVisibilityChanged(visible: Boolean): VisibilityTransition {
-        val transition = visibility.onContentVisibilityChanged(visible)
-        Log.i(TAG, "captured-content visibility: visible=$visible changed=${transition.changed} generation=${generation.current()}")
-        return transition
-    }
 
     /** Effective gate state for the structured acquisition log. */
     fun visibilityState(): String = visibility.currentState().name
@@ -127,7 +112,6 @@ class FramePipeline(
         height: Int,
         densityDpi: Int,
         initialDisplayRotation: FrameRotation = FrameRotation.ROTATION_0,
-        resetVisibility: Boolean = true,
         sessionId: Int = 0,
     ) {
         this.sessionId = sessionId
@@ -139,9 +123,6 @@ class FramePipeline(
         handlerThread = HandlerThread("draftlens-capture").also { it.start() }
         val handler = Handler(handlerThread!!.looper)
         val generationAtStart = generation.bump()
-        // A fresh capture session starts with the window visible; the callback will correct this.
-        // A resize re-creation keeps the current gate state (a hidden window stays hidden).
-        if (resetVisibility) visibility.onContentVisibilityChanged(true)
         Log.i(TAG, "pipeline start: width=$width height=$height density=$densityDpi rotation=$initialDisplayRotation generation=$generationAtStart")
 
         imageReader = ImageReader.newInstance(width, height, android.graphics.PixelFormat.RGBA_8888, 3).also { reader ->
@@ -204,7 +185,7 @@ class FramePipeline(
                         if (frozen) {
                             val n = diagnostics.sample("publish-drop-frozen")
                             if (diagnostics.shouldLog(n)) Log.i(TAG, "drop at-publish frozen count=$n $geometry")
-                        } else if (!visibility.isContentVisible()) {
+                        } else if (visibility.currentState() == CapturedContentVisibility.HIDDEN) {
                             val n = diagnostics.sample("publish-drop-hidden")
                             if (diagnostics.shouldLog(n)) Log.i(TAG, "drop at-publish contentHidden count=$n $geometry")
                         } else if (!generation.isCurrent(generationAtStart)) {
@@ -225,6 +206,7 @@ class FramePipeline(
                                 captureLatencyMs = processingLatencyMs,
                             )
                             sampler.markEmitted(sampledAtMs)
+                            visibility.onFramePublished()
                             _latestFrame.value = CapturedFrame(
                                 frame = visionFrame,
                                 processingLatencyMs = processingLatencyMs
@@ -377,7 +359,7 @@ class FramePipeline(
         displayHeight = 0
 
         try {
-            start(newWidth, newHeight, densityDpi, initialDisplayRotation, resetVisibility = false)
+            start(newWidth, newHeight, densityDpi, initialDisplayRotation, sessionId = sessionId)
         } catch (e: Exception) {
             // Discard partially created replacement resources and restore the previous session.
             runCatching { surface?.release() }

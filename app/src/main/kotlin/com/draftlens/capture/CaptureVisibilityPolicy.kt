@@ -1,54 +1,87 @@
 package com.draftlens.capture
 
 /**
- * Decides whether a freshly acquired captured-content image may be converted and
- * published. Single-app capture windows can disappear from the screen while the
- * projection stays valid: images acquired while hidden contain DraftLens, the shade or
- * other apps — never the game — and must not overwrite the last valid game frame.
+ * Visibility of the captured single-app window, with an explicit third state.
  *
- * Pure Kotlin so the truth table is unit-testable on the JVM; the pipeline holds one
- * instance and feeds it from `MediaProjection.Callback.onCapturedContentVisibilityChanged`
- * (API 34+). Full-display captures never report hidden, so the gate stays open there.
+ * UNKNOWN is deliberate: no platform callback has been applied yet for this session, or a
+ * `false` arrived before any frame existed (the captured window was hidden while the user
+ * was still in DraftLens choosing the app). UNKNOWN **allows** publication — full-display
+ * projections never call back at all, and an early single-app `false` must not block the
+ * first frame forever. The first successfully published frame promotes UNKNOWN → VISIBLE,
+ * so every later `false` is authoritative and protects the valid frame already held.
+ *
+ * HIDDEN blocks publication only; it never touches the overlay, projection or VirtualDisplay.
+ * Callbacks are kept even when they arrive before the pipeline exists: the policy is owned
+ * by the service, so ordering can no longer lose or overwrite a real callback.
  *
  * Thread-safe: read from the ImageReader thread, written from the callback thread.
  */
+enum class CapturedContentVisibility { UNKNOWN, VISIBLE, HIDDEN }
+
 class CaptureVisibilityPolicy {
 
     private val lock = Any()
 
     @Volatile
-    private var contentVisible: Boolean = true
+    private var state: CapturedContentVisibility = CapturedContentVisibility.UNKNOWN
 
-    /** Last visibility state; starts visible because most projections are full-display. */
-    fun isContentVisible(): Boolean = contentVisible
+    @Volatile
+    private var sessionId: Int = 0
 
-    /** Effective state for structured diagnostics. */
-    fun currentState(): String = if (contentVisible) "VISIBLE" else "HIDDEN"
+    @Volatile
+    private var sequence: Long = 0L
 
-    /**
-     * Records a visibility change. Returns what changed so callers can log and act;
-     * `changed == false` means the platform repeated the current value and the caller
-     * should treat it as a no-op.
-     */
-    fun onContentVisibilityChanged(visible: Boolean): VisibilityTransition = synchronized(lock) {
-        val previous = contentVisible
-        contentVisible = visible
-        VisibilityTransition(wasVisible = previous, isVisible = visible)
+    fun currentState(): CapturedContentVisibility = state
+
+    fun sequence(): Long = sequence
+
+    fun boundSessionId(): Int = sessionId
+
+    /** Called once per capture session, before consent/projection resources exist. */
+    fun resetForNewSession(id: Int) = synchronized(lock) {
+        state = CapturedContentVisibility.UNKNOWN
+        sessionId = id
+        sequence = 0L
+        Unit
     }
 
     /**
-     * Publication decision, evaluated per acquired image and again at publish time.
-     * [frozen] is the user's intent: an explicitly frozen session publishes nothing even
-     * while the window is visible, and a visible window publishes only when not frozen.
+     * Stores a platform callback, including those arriving before the pipeline is ready.
+     * Callbacks for a previous session are ignored (stale projection token).
      */
+    fun onContentVisibilityChanged(visible: Boolean, id: Int): VisibilityTransition = synchronized(lock) {
+        if (id != sessionId) {
+            VisibilityTransition(state, state, sequence, accepted = false)
+        } else {
+            sequence += 1
+            val previous = state
+            state = when {
+                visible -> CapturedContentVisibility.VISIBLE
+                state == CapturedContentVisibility.VISIBLE -> CapturedContentVisibility.HIDDEN
+                state == CapturedContentVisibility.HIDDEN -> CapturedContentVisibility.HIDDEN
+                else -> state // UNKNOWN + early false: nothing valid to protect yet
+            }
+            VisibilityTransition(previous, state, sequence, accepted = true)
+        }
+    }
+
+    /** A real frame makes a following `false` authoritative (UNKNOWN → VISIBLE). */
+    fun onFramePublished(): Boolean = synchronized(lock) {
+        if (state != CapturedContentVisibility.UNKNOWN) return false
+        state = CapturedContentVisibility.VISIBLE
+        true
+    }
+
     fun shouldPublish(isActive: Boolean, generationCurrent: Boolean, frozen: Boolean): Boolean =
-        isActive && generationCurrent && !frozen && contentVisible
+        isActive && generationCurrent && !frozen && state != CapturedContentVisibility.HIDDEN
 }
 
-/** Result of a visibility transition; [changed] false = duplicate callback. */
+/** Result of a stored visibility callback; [accepted] false = stale-session callback. */
 data class VisibilityTransition(
-    val wasVisible: Boolean,
-    val isVisible: Boolean,
+    val previous: CapturedContentVisibility,
+    val current: CapturedContentVisibility,
+    val sequence: Long,
+    val accepted: Boolean = true,
 ) {
-    val changed: Boolean get() = wasVisible != isVisible
+    val changed: Boolean get() = previous != current
 }

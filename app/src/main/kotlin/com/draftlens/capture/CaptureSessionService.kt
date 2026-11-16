@@ -55,6 +55,10 @@ class CaptureSessionService : Service() {
     )
     private val startupExecutor = CaptureStartupExecutor<MediaProjection>()
     private lateinit var pipeline: FramePipeline
+    /** Service-owned so visibility callbacks before pipeline creation are never lost. */
+    private val visibilityPolicy = CaptureVisibilityPolicy()
+    /** Service-owned so an early selected-app resize callback is never lost. */
+    private val pendingResize = PendingResize()
 
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -87,7 +91,12 @@ class CaptureSessionService : Service() {
             )
             // The captured-content dimensions are authoritative; they are not the same as
             // the display-window metrics the session started with (that is the landscape bug).
-            recreateDisplay(width, height, source = "captured-content-resize")
+            val seq = pendingResize.offer(width, height)
+            if (CaptureStateHolder.state.value.status == CaptureStatus.CAPTURING && virtualDisplay != null) {
+                applyPendingResize()
+            } else {
+                Log.i(TAG, "session=$sessionCounter resize buffered seq=$seq (status=${CaptureStateHolder.state.value.status} virtualDisplayReady=${virtualDisplay != null})")
+            }
         }
 
         /**
@@ -107,18 +116,25 @@ class CaptureSessionService : Service() {
                     "virtualDisplayReady=${virtualDisplay != null}",
             )
             if (!::pipeline.isInitialized) {
-                Log.i(TAG, "session=$sessionCounter visibility callback arrived before pipeline init: BUFFERED")
-                return
+                Log.i(TAG, "session=$sessionCounter visibility callback arrived before pipeline init: BUFFERED by service policy")
             }
-            pipeline.onContentVisibilityChanged(isVisible)
+            val transition = visibilityPolicy.onContentVisibilityChanged(isVisible, sessionCounter)
+            Log.i(
+                TAG,
+                "session=$sessionCounter visibility applied seq=${transition.sequence} accepted=${transition.accepted} " +
+                    "${transition.previous.name}->${transition.current.name} changed=${transition.changed} " +
+                    "state=${CaptureStateHolder.state.value.status}",
+            )
         }
     }
 
     override fun onCreate() {
         super.onCreate()
-        pipeline = FramePipeline(sampler) {
-            CaptureStateHolder.state.value.status == CaptureStatus.CAPTURING
-        }
+        pipeline = FramePipeline(
+            sampler,
+            isActive = { CaptureStateHolder.state.value.status == CaptureStatus.CAPTURING },
+            visibility = visibilityPolicy,
+        )
         createNotificationChannel()
     }
 
@@ -206,6 +222,8 @@ class CaptureSessionService : Service() {
         }
 
         sessionCounter += 1
+        visibilityPolicy.resetForNewSession(sessionCounter)
+        pendingResize.clear()
         sampler.setIntervalMs(intervalMs)
         releaseCaptureResources(releaseForeground = false)
 
@@ -227,16 +245,20 @@ class CaptureSessionService : Service() {
                         proj.registerCallback(projectionCallback, null)
 
                         val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                        val (captureWidth, captureHeight) = captureDimensions(wm)
+                        val (windowWidth, windowHeight) = captureDimensions(wm)
+                        // An early captured-content resize carries the selected app's real size.
+                        // Use it for BOTH the ImageReader and the VirtualDisplay from the start.
+                        val (captureWidth, captureHeight) = pendingResize.peek() ?: (windowWidth to windowHeight)
                         val dpi = resources.configuration.densityDpi
                         val displayRotation = currentDisplayRotation()
-                        Log.i(TAG, "session=$sessionCounter capture-start: dimensions=${captureWidth}x${captureHeight} dpi=$dpi rotation=$displayRotation source=windowMetrics")
+                        Log.i(TAG, "session=$sessionCounter capture-start: dimensions=${captureWidth}x${captureHeight} dpi=$dpi rotation=$displayRotation source=${if (pendingResize.peek() != null) "pending-captured-content-resize" else "windowMetrics"} windowMetrics=${windowWidth}x${windowHeight} visibility=${visibilityPolicy.currentState().name} visibilitySeq=${visibilityPolicy.sequence()}")
 
                         pipeline.start(captureWidth, captureHeight, dpi, displayRotation, sessionId = sessionCounter)
                         CaptureFreeze.attachPipeline(pipeline)
                         createVirtualDisplay(proj, captureWidth, captureHeight, dpi)
                         registerDisplayListener()
                         CaptureStateHolder.beginCapture(captureWidth, captureHeight, dpi)
+                        applyPendingResize() // idempotent no-op when the early value was already used
                         attachFloatingControl()
                         collectFrames()
                     }
@@ -279,6 +301,17 @@ class CaptureSessionService : Service() {
             overlayController?.detach()
             overlayController = null
         }
+    }
+
+    /** Applies the latest buffered selected-app dimensions once the session is ready. */
+    private fun applyPendingResize() {
+        val pending = pendingResize.consume() ?: return
+        if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING || virtualDisplay == null) {
+            Log.w(TAG, "session=$sessionCounter pending resize ${pending.first}x${pending.second} could not be applied yet; keeping it buffered")
+            pendingResize.offer(pending.first, pending.second)
+            return
+        }
+        recreateDisplay(pending.first, pending.second, source = "pending-captured-content-resize")
     }
 
     private fun captureDimensions(wm: WindowManager): Pair<Int, Int> {
@@ -354,16 +387,13 @@ class CaptureSessionService : Service() {
         frameJob?.cancel()
         frameJob = scope.launch {
             pipeline.latestFrame.collectLatest { frame ->
-                if (frame != null && CaptureStateHolder.state.value.status == CaptureStatus.CAPTURING) {
+                if (frame != null) {
+                    // The pipeline owns freshness: stop() clears latestFrame. Do not drop a
+                    // frame that was published during STARTING, before beginCapture().
                     CaptureStateHolder.recordFrame(frame)
                     val delivered = diagnostics.sample("holder-delivered")
                     if (diagnostics.shouldLog(delivered)) {
-                        Log.i(TAG, "session=$sessionCounter recordFrame delivered count=$delivered frame=${frame.width}x${frame.height} id=${frame.frame.id.value}")
-                    }
-                } else if (frame != null) {
-                    val dropped = diagnostics.sample("holder-drop-status")
-                    if (diagnostics.shouldLog(dropped)) {
-                        Log.i(TAG, "session=$sessionCounter recordFrame skipped count=$dropped status=${CaptureStateHolder.state.value.status}")
+                        Log.i(TAG, "session=$sessionCounter recordFrame delivered count=$delivered frame=${frame.width}x${frame.height} id=${frame.frame.id.value} status=${CaptureStateHolder.state.value.status}")
                     }
                 }
             }
@@ -413,8 +443,12 @@ class CaptureSessionService : Service() {
     private fun recreateDisplay(width: Int, height: Int, source: String) {
         val densityDpi = resources.configuration.densityDpi
         val display = virtualDisplay ?: run {
-            Log.e(TAG, "session=$sessionCounter resize requested ($source) but VirtualDisplay is missing")
-            failProjectionSession("VirtualDisplay disappeared during resize", null)
+            if (CaptureStateHolder.state.value.status == CaptureStatus.CAPTURING) {
+                Log.e(TAG, "session=$sessionCounter resize requested ($source) but VirtualDisplay is missing")
+                failProjectionSession("VirtualDisplay disappeared during resize", null)
+            } else {
+                Log.i(TAG, "session=$sessionCounter resize requested ($source) ${width}x${height} before VirtualDisplay creation; buffered")
+            }
             return
         }
         if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING) {
@@ -540,6 +574,7 @@ class CaptureSessionService : Service() {
     }
 
     private fun releaseCaptureResources(releaseForeground: Boolean) {
+        pendingResize.clear()
         // The overlay goes first: after stop the control has nothing to toggle and must never linger.
         overlayController?.detach()
         overlayController = null
