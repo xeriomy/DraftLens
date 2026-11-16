@@ -592,7 +592,10 @@ the matcher/Vision Lab are unaffected (this bug is in the capture pipeline only)
 
 ## Verification
 
-- CI head / unit totals / APK digest: recorded in the PR #4 description (edited after the final green run)
+- Implementation head `6e2d7b7`: CI run 43782436092 — **888 unit tests, 0 failures / 0 errors / 0 skipped**;
+  strict lint green; `assembleDebug` green; APK `app-debug.apk`
+  sha256 `3f390ac92458815e292897dfe937ae66bd9179946d533a33cf1a9386b864b551`. Docs-only commits after
+  it change no build inputs and are re-checked by CI on every push.
 - Instrumentation: compiled via `assembleAndroidTest` in CI; not executed — no KVM on the runner
 - Physical device (rows 33–43 of `docs/TESTING_PHYSICAL_DEVICE.md`): NOT RUN — maintainer task;
   in particular the overlay-vs-capture isolation finding (rows 34/35) is an on-device question

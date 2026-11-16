@@ -135,5 +135,5 @@ PASS** (device details not supplied). The MediaProjection lifecycle matrix is **
 - [x] Task 7: Instrumented overlay attach/remove test (compile-only) (`c6edb52`)
 - [x] Task 8: Visibility/freeze/stop sequence tests (`94662b3`)
 - [x] Task 9: Documentation (sprint doc, capture docs, device matrix rows 33–43) (this branch)
-- [ ] Task 10: CI green record, APK digest, stacked PR #4 report
+- [x] Task 10: CI green record (run 43782436092 at `6e2d7b7`: 888 unit tests, 0 failures; APK sha256 `3f39…`; stacked PR #4)
 Verification runs in GitHub Actions because the authoring host has no Android toolchain (below). Physical-device rows 33–43 are **NOT RUN**.

@@ -92,8 +92,11 @@ can establish it per device/OEM.
 CI (GitHub Actions, ubuntu-latest) is the build of record — the authoring host has no
 Android toolchain.
 
-- CI head / unit totals / APK digest: recorded in the PR #4 description (edited after the final green run)
-- Instrumentation: **compiled via `assembleAndroidTest`; not executed** (no KVM on the runner)
+- Implementation head `6e2d7b7` (docs-only commits after it change no build inputs):
+  CI run 43782436092 — **888 unit tests, 0 failures / 0 errors / 0 skipped**; strict lint green;
+  `assembleAndroidTest` green; `assembleDebug` green; APK `app-debug.apk`
+  sha256 `3f390ac92458815e292897dfe937ae66bd9179946d533a33cf1a9386b864b551`.
+- Instrumentation tests: **compiled via `assembleAndroidTest`; not executed** (no KVM on the runner).
 - Physical-device rows 33–43: **NOT RUN** — see `docs/TESTING_PHYSICAL_DEVICE.md`
 
 ## Explicitly not built (scope restrictions)
