@@ -90,3 +90,37 @@ PASS** (device details not supplied). The MediaProjection lifecycle matrix is **
 ## Phase 4: Docs + verify
 - [x] Task 9: README, ARCHITECTURE, SCREEN_CAPTURE, DATA_SOURCES, ADR-001
 - [x] Task 10: Tests + lint + assembleDebug green; APK + manifest verified; report written
+
+## Sprint 1B: Hero catalog, slot extraction and recognition
+- [x] Hero catalog module (Rone Arena primary, MLBBDex cross-check, atomic cache, offline)
+- [x] Slot image extraction (all rotations, edge cases)
+- [x] Recognition v0: dHash + color descriptor, explicit no-match, manual confirm/correct
+- [x] Vision Lab card: sync, Identify, candidates, confirmed state, manual correction
+- [x] Unit coverage for catalog, cache, extraction, matching, VM flows
+- [x] CI green: 323 tests (646 executions), strict lint, assembleDebug, assembleAndroidTest compiled (run 43732908605, head e58611c; code head 7d0c903 run 43731484922)
+
+## Sprint 1B review fixes + game-frame freeze (PR #3 follow-up)
+- [x] Part A: freeze/resume from the notification through the capture architecture
+      (explicit action to the running service; independently owned snapshot; images stay
+      acquired+closed while frozen; one frozen frame; notification LIVE/FROZEN; in-app Resume;
+      full-device capture guidance; POST_NOTIFICATIONS handling)
+- [x] Part B: pixel rotation fixed to the FrameTransform convention; asymmetric non-square
+      tests with independently calculated expectations
+- [x] Part C: Android bitmap extractor validated and made pixel-exact; instrumentation tests
+      for all rotations, edge crops, mismatches, source validity and snapshot ownership
+- [x] Part D: visual-information gate (uniform/near-uniform/detail-free crops rejected);
+      distinct InsufficientVisualInformation outcome and UI state
+- [x] Part E: manual correction everywhere; failed clears reported honestly
+- [x] Part F: cache freshness (URL-bound sidecar metadata; hash/structure/decode validation;
+      URL change forces re-download; failed refresh keeps previous asset; HTTPS-only redirects)
+- [x] Part G: atomic snapshot/asset writes; failure preserves previous snapshot; temp files swept
+- [x] Part H: reference Bitmap dims read before recycling
+- [x] Landscape capture fix (MLBB): authoritative captured-content resize via
+      `onCapturedContentResize` + `DisplayManager` fallback to current window metrics;
+      VirtualDisplay/ImageReader re-created at the reported size; generation numbers reject
+      stale reader callbacks; plane conversion honors `image.cropRect` and padded rows;
+      structured diagnostics in `CaptureSessionService`/`FramePipeline`/`VisionPreprocessor`
+- [x] CI green on the new head for this revision (run 43773398149, head 5252016cd15c824009368e831ed499f24209980d; 840 unit tests; instrumentation compiled, not executed — no KVM on the runner)
+- [ ] Physical-device smoke of the freeze workflow; on-device accuracy evaluation;
+      threshold/heuristic calibration (pending)
+- [ ] Physical-device verification of the landscape capture fix in MLBB (rows 23–32) (pending)

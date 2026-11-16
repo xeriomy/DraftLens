@@ -2,6 +2,16 @@ package com.draftlens.feature.visionlab
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.draftlens.vision.heroes.HeroCatalogEntry
+import com.draftlens.vision.heroes.HeroCatalogRepository
+import com.draftlens.vision.heroes.HeroReference
+import com.draftlens.vision.heroes.HeroRecognition
+import com.draftlens.vision.heroes.HeroReferenceImages
+import com.draftlens.vision.heroes.SlotImageExtractor
+import com.draftlens.vision.heroes.SlotImageExtractors
+import com.draftlens.vision.heroes.pixelsOf
+import com.draftlens.datastore.HeroConfirmation
+import com.draftlens.datastore.HeroRecognitionStore
 import com.draftlens.vision.annotation.DraftSlot
 import com.draftlens.vision.annotation.SlotAnnotationStore
 import com.draftlens.vision.annotation.SlotTeam
@@ -32,14 +42,18 @@ import java.util.concurrent.atomic.AtomicLong
  * State holder for the Vision Lab.
  *
  * Frames are consumed through [VisionFrameSource]; processing is explicit and
- * happens only when the user asks for it. There is no recognizer in this sprint:
- * the processed frame is pixels plus geometry, never a detection.
+ * happens only when the user asks for it. There is no recognizer wired to automatic
+ * processing: recognition runs only on the user's explicit Identify action.
  */
 class VisionLabViewModel(
     private val source: VisionFrameSource,
     private val preprocessor: FramePreprocessor,
     private val calibrationRepository: CalibrationRepository,
     private val annotationStore: SlotAnnotationStore = SlotAnnotationStore(idGenerator = { UUID.randomUUID().toString() }),
+    private val heroCatalog: HeroCatalogRepository,
+    private val heroRecognitionStore: HeroRecognitionStore,
+    private val extractorFor: (OriginalFrame) -> SlotImageExtractor = SlotImageExtractors::forFrame,
+    private val referenceLoader: (java.io.File, HeroCatalogEntry) -> HeroReference? = HeroReferenceImages::loadReference,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(VisionLabUiState())
@@ -58,25 +72,59 @@ class VisionLabViewModel(
             source.frames.collect { frame -> _uiState.update { it.copy(liveFrame = frame) } }
         }
         viewModelScope.launch {
+            // The pinned frame comes from the capture side (notification or in-app command);
+            // newer live frames can never replace it here.
+            source.frozenFrame.collect { frame -> _uiState.update { it.copy(frozenFrame = frame) } }
+        }
+        viewModelScope.launch {
             source.state.collect { state -> _uiState.update { it.copy(sourceState = state) } }
         }
         viewModelScope.launch {
             calibrationRepository.profiles.collect { result -> _uiState.update { it.copy(calibration = result) } }
         }
+        viewModelScope.launch {
+            heroCatalog.state.collect { state -> _uiState.update { it.copy(heroCatalog = state) } }
+        }
+        viewModelScope.launch {
+            loadConfirmedHeroes()
+        }
         refreshSlots()
+    }
+
+    /** Restores per-slot hero confirmations from the store so they survive app restarts. */
+    private suspend fun loadConfirmedHeroes() {
+        val confirmations = heroRecognitionStore.load()
+        if (confirmations.isEmpty()) return
+        _uiState.update {
+            it.copy(
+                heroRecognition = it.heroRecognition + confirmations.mapValues { (_, confirmation) ->
+                    com.draftlens.feature.visionlab.HeroSlotUiState(
+                        phase = HeroSlotPhase.CONFIRMED,
+                        message = confirmation.heroName,
+                        confirmedHeroId = confirmation.heroId,
+                        confirmedAtMs = confirmation.confirmedAtMs,
+                    )
+                },
+            )
+        }
     }
 
     // region frame control
 
-    /** Pins the frame that is on screen; live frames keep arriving but are not shown. */
+    /**
+     * Pins the newest valid frame through the capture side (same command the notification
+     * runs). The pinned frame is independently owned and shown until [resume]/[clear].
+     * Idempotent: an already-pinned frame is kept.
+     */
     fun freeze() {
-        val frame = source.frames.value ?: return
-        _uiState.update { it.copy(frozenFrame = frame) }
+        if (!source.freeze()) {
+            report("No captured frame to freeze yet. Start capture and wait for a frame.")
+        }
     }
 
     /** Releases the pinned frame and shows live frames again. */
     fun resume() {
-        _uiState.update { it.copy(frozenFrame = null) }
+        source.resume()
     }
 
     /**
@@ -87,6 +135,7 @@ class VisionLabViewModel(
         generation.incrementAndGet()
         processingJob?.cancel()
         processingJob = null
+        source.resume()
         _uiState.update {
             it.copy(frozenFrame = null, processed = null, processStatus = ProcessStatus.IDLE, processError = null)
         }
@@ -345,6 +394,156 @@ class VisionLabViewModel(
 
     fun closeFullscreenEditor() {
         _uiState.update { it.copy(fullscreenEditor = false) }
+    }
+
+    // endregion
+
+    // region hero recognition
+
+    /** Downloads the hero catalog and its reference images. Only on the user's action. */
+    fun syncHeroCatalog() {
+        viewModelScope.launch(Dispatchers.IO) {
+            heroCatalog.refresh()
+        }
+    }
+
+    /**
+     * Extracts the selected slot's image and matches it against the cached catalog.
+     * Explicit user action; never runs continuously.
+     */
+    fun identifySelectedSlot() {
+        val state = _uiState.value
+        val slot = state.selectedSlotId?.let { id -> annotationStore.slots().firstOrNull { it.id == id } }
+        if (slot == null) {
+            report("Select a slot first")
+            return
+        }
+        val frame = state.frozenFrame ?: source.frames.value
+        if (frame == null) {
+            report("There is no frame to recognize")
+            return
+        }
+        _uiState.update {
+            it.copy(
+                heroRecognition = it.heroRecognition + (slot.id to com.draftlens.feature.visionlab.HeroSlotUiState(HeroSlotPhase.PROCESSING)),
+                heroPreview = null,
+            )
+        }
+        viewModelScope.launch(Dispatchers.Default) {
+            when (val computation = recognize(frame, slot)) {
+                is IdentifyComputation.Failed -> updateHeroSlot(slot.id) {
+                    com.draftlens.feature.visionlab.HeroSlotUiState(HeroSlotPhase.FAILED, message = computation.message)
+                }
+
+                is IdentifyComputation.Done -> when (val outcome = computation.outcome) {
+                    is com.draftlens.vision.heroes.HeroIdentifyOutcome.Candidates -> updateHeroSlot(slot.id) {
+                        com.draftlens.feature.visionlab.HeroSlotUiState(HeroSlotPhase.CANDIDATES, candidates = outcome.candidates)
+                    }
+
+                    is com.draftlens.vision.heroes.HeroIdentifyOutcome.NoMatch -> updateHeroSlot(slot.id) {
+                        com.draftlens.feature.visionlab.HeroSlotUiState(HeroSlotPhase.NO_MATCH, bestSimilarity = outcome.bestSimilarity)
+                    }
+
+                    is com.draftlens.vision.heroes.HeroIdentifyOutcome.InsufficientVisualInformation -> updateHeroSlot(slot.id) {
+                        com.draftlens.feature.visionlab.HeroSlotUiState(HeroSlotPhase.INSUFFICIENT_INFO, message = outcome.reason)
+                    }
+
+                    is com.draftlens.vision.heroes.HeroIdentifyOutcome.Failed -> updateHeroSlot(slot.id) {
+                        com.draftlens.feature.visionlab.HeroSlotUiState(HeroSlotPhase.FAILED, message = outcome.message)
+                    }
+                }.also {
+                    _uiState.update { it.copy(heroPreview = computation.preview) }
+                }
+            }
+        }
+    }
+
+    /** Records the user's manual confirmation of a hero for a slot. */
+    fun confirmHero(slotId: String, heroId: String) {
+        val candidateName = _uiState.value.heroRecognition[slotId]?.candidates
+            ?.firstOrNull { it.hero.id.value == heroId }?.hero?.canonicalName
+        val snapshotName = heroCatalog.snapshot()?.entries?.firstOrNull { it.id.value == heroId }?.canonicalName
+        val name = candidateName ?: snapshotName ?: "Unknown hero"
+        val confirmation = HeroConfirmation(heroId = heroId, heroName = name, confirmedAtMs = System.currentTimeMillis())
+        viewModelScope.launch {
+            val result = runCatching { heroRecognitionStore.confirm(slotId, confirmation) }
+            if (result.isFailure) {
+                report("The hero confirmation could not be saved: ${result.exceptionOrNull()?.message}")
+                return@launch
+            }
+            _uiState.update {
+                it.copy(
+                    heroRecognition = it.heroRecognition + (
+                        slotId to com.draftlens.feature.visionlab.HeroSlotUiState(
+                            HeroSlotPhase.CONFIRMED,
+                            message = name,
+                            confirmedHeroId = heroId,
+                            confirmedAtMs = confirmation.confirmedAtMs,
+                        )
+                    ),
+                    heroPreview = null,
+                )
+            }
+        }
+    }
+
+    /** Removes a confirmed hero so the slot can be identified again. */
+    fun clearHeroConfirmation(slotId: String) {
+        viewModelScope.launch {
+            val result = runCatching { heroRecognitionStore.clear(slotId) }
+            if (result.isFailure) {
+                report("The hero confirmation could not be cleared: ${result.exceptionOrNull()?.message}")
+                return@launch
+            }
+            _uiState.update {
+                it.copy(heroRecognition = it.heroRecognition - slotId, heroPreview = null)
+            }
+        }
+    }
+
+    /** The cached HEAD reference file for a hero, if any; never triggers a download. */
+    fun heroAssetFile(hero: HeroCatalogEntry): java.io.File? =
+        heroCatalog.assetFile(hero.id, com.draftlens.vision.heroes.HeroAssetVariant.HEAD)
+
+    /** Filters the cached catalog by name for manual correction. */
+    fun searchCatalog(query: String, limit: Int = 8): List<HeroCatalogEntry> {
+        if (query.isBlank()) return emptyList()
+        val needle = query.trim().lowercase()
+        return heroCatalog.snapshot()?.entries
+            ?.filter { it.canonicalName.lowercase().contains(needle) }
+            ?.take(limit)
+            ?: emptyList()
+    }
+
+    private sealed interface IdentifyComputation {
+        data class Done(val outcome: com.draftlens.vision.heroes.HeroIdentifyOutcome, val preview: android.graphics.Bitmap?) : IdentifyComputation
+        data class Failed(val message: String) : IdentifyComputation
+    }
+
+    private fun recognize(frame: OriginalFrame, slot: DraftSlot): IdentifyComputation {
+        val extractor = extractorFor(frame)
+        val image = extractor.extract(frame, slot).getOrElse {
+            return IdentifyComputation.Failed(it.message ?: "The slot image could not be extracted")
+        }
+        val pixels = pixelsOf(image)
+            ?: return IdentifyComputation.Failed("The extracted image could not be read for comparison")
+        val snapshot = heroCatalog.snapshot()
+            ?: return IdentifyComputation.Failed("Sync the hero catalog first")
+        val references = snapshot.entries.mapNotNull { entry ->
+            val asset = entry.assets.firstOrNull { it.variant == com.draftlens.vision.heroes.HeroAssetVariant.HEAD }
+                ?: return@mapNotNull null
+            val file = heroCatalog.assetFile(entry.id, asset.variant) ?: return@mapNotNull null
+            referenceLoader(file, entry)
+        }
+        val preview = (image.payload as? com.draftlens.vision.model.android.BitmapFramePayload)?.bitmap
+        return IdentifyComputation.Done(
+            HeroRecognition.identify(pixels.first, pixels.second, pixels.third, references),
+            preview,
+        )
+    }
+
+    private fun updateHeroSlot(slotId: String, transform: () -> com.draftlens.feature.visionlab.HeroSlotUiState) {
+        _uiState.update { it.copy(heroRecognition = it.heroRecognition + (slotId to transform())) }
     }
 
     // endregion

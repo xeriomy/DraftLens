@@ -128,3 +128,59 @@ grow without re-architecture.
 - After Phase 1: `./gradlew test` green, app assembles (empty landing OK).
 - After Phase 2: unit tests for state machine + sampler green; lint + assemble green.
 - Final: test + lint + assembleDebug all green; APK exists; manifest grep verified.
+
+### Sprint 1B — Hero recognition (first pipeline)
+- Hero catalog sync (manual refresh, atomic snapshot, offline browsing) wired through a small transport seam.
+- Slot extraction from the annotation canvas with rotation coverage.
+- Recognition v0 with labeled similarity and explicit no-match; manual confirmation required.
+- Draft PR #3; accuracy on real screens not measured; device smoke pending.
+
+## Sprint 1B — Review fixes and game-frame freeze (this revision)
+Objective: fix the PR #3 review findings (freeze from the notification; rotation bugs;
+blank-image rejection; manual correction everywhere; cache freshness; atomic persistence;
+reference-loader ownership) and wire the freeze workflow through the capture architecture.
+No recommendation features, no overlays, no automation, PR stays draft and unmerged.
+
+### Work items in order
+- [x] Freeze a game frame from the notification (`CaptureFreeze`, `ACTION_FREEZE` /
+      `ACTION_RESUME_LIVE`, `FramePipeline` freeze gate, independently owned snapshot via
+      `FrameSnapshots`, FROZEN notification with Resume action, in-app Resume unchanged)
+- [x] Full-device-capture guidance; POST_NOTIFICATIONS handling; freeze actions in the
+      expanded notification; no Activity launched by the command
+- [x] Part B: pixel extractor rotation fixed to the `FrameTransform.sourceToOriented()`
+      convention; tests rewritten with asymmetric non-square fixtures and hand-computed
+      expected values
+- [x] Landscape capture fix (MLBB portrait→landscape rotation bug):
+      - authoritative `onCapturedContentResize` signal feeds one idempotent resize path;
+      - `DisplayManager` fallback re-derives the capture size on any display change;
+      - VirtualDisplay/ImageReader re-created at the reported size;
+      - capture generations reject stale reader callbacks at listener and publish time;
+      - plane conversion honors `image.cropRect` and padded rows (`RgbaPlaneCopy`, JVM-tested
+        with asymmetric fixtures, letterboxed crops and stride variants);
+      - structured diagnostics in `CaptureSessionService`/`FramePipeline`/`VisionPreprocessor`;
+      - physical-device verification pending (rows 23–32 of `docs/TESTING_PHYSICAL_DEVICE.md`)
+- [x] Part C: Android extractor validates Bitmap dimensions, pixel-exact rotation, source
+      bitmap preserved, every temporary released exactly once; instrumentation tests added
+- [x] Part D: `VisualInformationAnalyzer` (variance, edge density, meaningful differences,
+      minimum dimensions) gates matching with a distinct `InsufficientVisualInformation`
+      outcome and `INSUFFICIENT_INFO` UI state; blank crops never produce candidates
+- [x] Part E: manual correction reachable from CANDIDATES, NO_MATCH, FAILED,
+      INSUFFICIENT_INFO and CONFIRMED; Change… opens correction instead of Identify;
+      failed persistence reported, never shown as success
+- [x] Part F: cache freshness — per-asset `*.meta` sidecar (URL, SHA-256, size, content
+      type), serve-time validation (hash, magic bytes, container structure, Android decode),
+      URL change forces re-download, failed refresh keeps previous asset, HTTP downgrades
+      refused everywhere
+- [x] Part G: snapshot/asset writes are temp-sibling + flush/sync + `ATOMIC_MOVE` only;
+      no direct-write fallback; failures preserve the previous target; `*.tmp` swept
+- [x] Part H: reference loader reads dimensions before recycling; pixels read before release;
+      exceptional paths recycle too
+- [x] CI green on the final head (run 43746648882, head 1c7397b925dd2683b3d763e552d610d2e464ecb7; instrumentation compiled, not executed — no KVM on the runner)
+      (no KVM on the runner) — needs a device or KVM-enabled emulator
+- [ ] Physical-device smoke of the freeze workflow; on-device accuracy
+      evaluation; real-screen threshold and heuristic calibration
+
+### Sprint 1B verification
+See `docs/VISION_TESTING.md` for the exact CI runs, test totals and what was and was not
+executed. The authoring host remains aarch64, so the CI is the build of record.
+Physical-device verification of the freeze workflow is pending.

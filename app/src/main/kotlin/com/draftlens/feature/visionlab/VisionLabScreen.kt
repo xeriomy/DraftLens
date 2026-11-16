@@ -47,12 +47,16 @@ import com.draftlens.vision.preprocessing.AndroidFramePreprocessor
 fun VisionLabScreen(
     calibrationRepository: CalibrationRepository,
     source: VisionFrameSource,
+    heroCatalog: com.draftlens.vision.heroes.HeroCatalogRepository,
+    heroRecognitionStore: com.draftlens.datastore.HeroRecognitionStore,
 ) {
     val vm: VisionLabViewModel = viewModel {
         VisionLabViewModel(
             source = source,
             preprocessor = AndroidFramePreprocessor,
             calibrationRepository = calibrationRepository,
+            heroCatalog = heroCatalog,
+            heroRecognitionStore = heroRecognitionStore,
         )
     }
     val state by vm.uiState.collectAsState()
@@ -99,6 +103,8 @@ fun VisionLabScreen(
         AnnotationCanvasCard(state = state, vm = vm)
 
         SlotEditor(state = state, vm = vm)
+
+        HeroRecognitionCard(state = state, vm = vm)
 
         ProcessingInspectorCard(state = state, onMaxDimensionChange = vm::setMaxProcessedDimension)
 
@@ -185,9 +191,17 @@ private fun FramePreviewCard(
                 if (state.isFrozen) {
                     "Resume returns to live frames."
                 } else {
-                    "Freeze locks the current frame before annotation."
+                    "Freeze locks the current frame before annotation. While in game, tap " +
+                        "“Freeze current frame” on the capture notification instead."
                 },
                 style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                "Capturing Mobile Legends? When Android asks what to capture, choose Entire screen / " +
+                    "full device display. App-window capture cannot see the game. The capture " +
+                    "notification’s Freeze action needs notifications enabled.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

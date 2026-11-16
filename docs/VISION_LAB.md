@@ -13,7 +13,9 @@ Shows the frozen frame when one is pinned, otherwise the latest live frame.
 - Source state (`CAPTURING`, `PAUSED`, `IDLE`, `STOPPED`, `ERROR`, `UNKNOWN`)
 - A `LIVE` / `FROZEN` badge
 - *Freeze* / *Resume* — *Freeze* locks the current frame before annotation; *Resume* returns to
-  live frames.
+  live frames. Freezing is also possible from the capture notification (**Freeze current
+  frame**) while you are in another app; the pinned frame is independently owned and newer
+  live frames never replace it.
 - *Process Frame* — processes the pinned frame if there is one, otherwise the latest live
   frame at the moment of the press. It resizes and prepares the frame only; no recognition
   exists yet.
@@ -164,8 +166,8 @@ The button is a compact icon in the corner of the canvas card.
 
 | Control | What it does |
 |---|---|
-| **Freeze** | locks the current frame before annotation |
-| **Resume** | returns to live frames |
+| **Freeze** | locks the current frame before annotation (also available as **Freeze current frame** in the capture notification while in another app) |
+| **Resume** | returns to live frames (also as **Resume live capture** in the notification) |
 | **Slot** | a manually marked region where a ban/pick hero portrait is expected |
 | **Process Frame** | resizes and prepares the frame only; no recognition exists yet |
 | **Calibration profile** | saves and restores normalized slot coordinates for matching screen layouts |

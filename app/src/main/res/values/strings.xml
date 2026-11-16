@@ -2,7 +2,12 @@
     <string name="app_name">DraftLens</string>
     <string name="capture_channel_name">DraftLens capture</string>
     <string name="capture_notification_title">DraftLens is capturing your screen</string>
-    <string name="capture_notification_text">Tap to view debug screen</string>
+    <string name="capture_notification_text">Live preview of what you are sharing</string>
     <string name="capture_stop_action">Stop</string>
+    <string name="capture_live_subtext">LIVE</string>
+    <string name="capture_frozen_subtext">FROZEN</string>
+    <string name="capture_notification_frozen_text">Frame frozen — the Vision Lab shows the pinned frame</string>
+    <string name="capture_freeze_action">Freeze current frame</string>
+    <string name="capture_resume_capture_action">Resume live capture</string>
     <string name="detection_not_implemented">Not implemented in Sprint 0</string>
 </resources>

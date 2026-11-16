@@ -4,12 +4,17 @@ import com.draftlens.models.CaptureStatus
 import com.draftlens.vision.model.FrameRotation
 import com.draftlens.vision.testCapturedFrame
 import org.junit.Assert.*
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 
 class CaptureStateHolderTest {
 
     @Before fun resetHolder() {
+        CaptureStateHolder.reset()
+    }
+
+    @After fun clearHolder() {
         CaptureStateHolder.reset()
     }
 
@@ -220,5 +225,49 @@ class CaptureStateHolderTest {
         assertEquals(0L, state.frameCount)
         assertNull(state.lastFrameWallClockMs)
         assertNull(CaptureStateHolder.latestFrame.value)
+    }
+
+    @Test fun `a frozen frame survives a capture stop`() {
+        CaptureStateHolder.beginCapture(1080, 2400, 440)
+        val frozen = testCapturedFrame()
+        CaptureStateHolder.setFrozenFrame(frozen)
+
+        CaptureStateHolder.terminateSession(forceIdle = true)
+
+        assertEquals("the independently owned snapshot must survive the stop", frozen, CaptureStateHolder.frozenFrame.value)
+    }
+
+    @Test fun `a frozen frame survives an error termination`() {
+        CaptureStateHolder.beginCapture(1080, 2400, 440)
+        val frozen = testCapturedFrame()
+        CaptureStateHolder.setFrozenFrame(frozen)
+
+        CaptureStateHolder.terminateSession("consent revoked")
+
+        assertEquals(frozen, CaptureStateHolder.frozenFrame.value)
+    }
+
+    @Test fun `a new capture session drops the frozen frame`() {
+        CaptureStateHolder.setFrozenFrame(testCapturedFrame())
+
+        CaptureStateHolder.beginCapture(1080, 2400, 440)
+
+        assertNull(CaptureStateHolder.frozenFrame.value)
+    }
+
+    @Test fun `clearing the frozen frame releases it`() {
+        CaptureStateHolder.setFrozenFrame(testCapturedFrame())
+
+        CaptureStateHolder.clearFrozenFrame()
+
+        assertNull(CaptureStateHolder.frozenFrame.value)
+    }
+
+    @Test fun `reset clears the frozen frame`() {
+        CaptureStateHolder.setFrozenFrame(testCapturedFrame())
+
+        CaptureStateHolder.reset()
+
+        assertNull(CaptureStateHolder.frozenFrame.value)
     }
 }

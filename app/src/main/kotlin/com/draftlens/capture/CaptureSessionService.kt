@@ -56,7 +56,10 @@ class CaptureSessionService : Service() {
     private var displayListener: DisplayManager.DisplayListener? = null
     private var captureJob: Job? = null
     private var frameJob: Job? = null
+    private var frozenJob: Job? = null
     private var foregroundPromoted = false
+    /** Increments once per capture session; tags every structured log line. */
+    private var sessionCounter = 0
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -65,7 +68,9 @@ class CaptureSessionService : Service() {
         }
 
         override fun onCapturedContentResize(width: Int, height: Int) {
-            recreateDisplay(width, height, resources.configuration.densityDpi)
+            // The captured-content dimensions are authoritative; they are not the same as
+            // the display-window metrics the session started with (that is the landscape bug).
+            recreateDisplay(width, height, source = "captured-content-resize")
         }
     }
 
@@ -129,6 +134,36 @@ class CaptureSessionService : Service() {
                 CaptureStateHolder.setPaused(false)
                 START_NOT_STICKY
             }
+            ACTION_FREEZE -> {
+                // Never re-promotes, never restarts MediaProjection: no-op without an active pipeline.
+                if (!CaptureFreeze.hasActivePipeline()) {
+                    Log.i(TAG, "Freeze command ignored: no active capture session")
+                    stopSelf() // do not linger for a stale command
+                    return START_NOT_STICKY
+                }
+                when (val outcome = CaptureFreeze.freezeCurrentFrame()) {
+                    is FreezeOutcome.Frozen ->
+                        Log.i(TAG, "Freeze command honoured (${outcome.frame.width}x${outcome.frame.height})")
+                    FreezeOutcome.AlreadyFrozen ->
+                        Log.i(TAG, "Freeze command: a frame is already frozen; keeping it")
+                    FreezeOutcome.NoFrame ->
+                        Log.i(TAG, "Freeze command ignored: no frame captured yet")
+                    FreezeOutcome.NoPipeline -> {
+                        Log.i(TAG, "Freeze command ignored: no active capture session")
+                        stopSelf() // do not linger for a stale command
+                    }
+                }
+                START_NOT_STICKY
+            }
+            ACTION_RESUME_LIVE -> {
+                CaptureFreeze.resumeLive()
+                if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING &&
+                    CaptureStateHolder.state.value.status != CaptureStatus.PAUSED
+                ) {
+                    stopSelf() // stale action after capture stopped; nothing to resume into
+                }
+                START_NOT_STICKY
+            }
             else -> START_NOT_STICKY
         }
     }
@@ -140,6 +175,7 @@ class CaptureSessionService : Service() {
             return
         }
 
+        sessionCounter += 1
         sampler.setIntervalMs(intervalMs)
         releaseCaptureResources(releaseForeground = false)
 
@@ -164,8 +200,10 @@ class CaptureSessionService : Service() {
                         val (captureWidth, captureHeight) = captureDimensions(wm)
                         val dpi = resources.configuration.densityDpi
                         val displayRotation = currentDisplayRotation()
+                        Log.i(TAG, "session=$sessionCounter capture-start: dimensions=${captureWidth}x${captureHeight} dpi=$dpi rotation=$displayRotation source=windowMetrics")
 
                         pipeline.start(captureWidth, captureHeight, dpi, displayRotation)
+                        CaptureFreeze.attachPipeline(pipeline)
                         createVirtualDisplay(proj, captureWidth, captureHeight, dpi)
                         registerDisplayListener()
                         CaptureStateHolder.beginCapture(captureWidth, captureHeight, dpi)
@@ -260,6 +298,12 @@ class CaptureSessionService : Service() {
                 }
             }
         }
+        frozenJob?.cancel()
+        frozenJob = scope.launch {
+            CaptureStateHolder.frozenFrame.collectLatest { frozen ->
+                updateNotificationState(frozen != null)
+            }
+        }
     }
 
     private fun createVirtualDisplay(
@@ -280,21 +324,34 @@ class CaptureSessionService : Service() {
             null,
             null
         ) ?: error("createVirtualDisplay() returned null")
-        Log.i(TAG, "VirtualDisplay created (${width}x${height}, ${densityDpi}dpi)")
+        Log.i(TAG, "session=$sessionCounter virtual-display created: ${width}x${height} dpi=$densityDpi (auto-mirror of the default display)")
     }
 
-    private fun recreateDisplay(width: Int, height: Int, densityDpi: Int) {
+    /**
+     * Applies new captured-content dimensions to the VirtualDisplay/ImageReader pair.
+     * [source] identifies which signal requested it ("captured-content-resize" — the
+     * authoritative callback, or "display-listener" — the rotation/size fallback); both
+     * funnel here so the handling is identical and idempotent.
+     */
+    private fun recreateDisplay(width: Int, height: Int, source: String) {
+        val densityDpi = resources.configuration.densityDpi
         val display = virtualDisplay ?: run {
-            Log.e(TAG, "Resize requested but VirtualDisplay is missing")
+            Log.e(TAG, "session=$sessionCounter resize requested ($source) but VirtualDisplay is missing")
             failProjectionSession("VirtualDisplay disappeared during resize", null)
             return
         }
-        if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING) return
+        if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING) {
+            Log.i(TAG, "session=$sessionCounter ignoring $source ${width}x${height}: capture is not in CAPTURING state")
+            return
+        }
 
         val displayRotation = currentDisplayRotation()
+        val currentWidth = CaptureStateHolder.state.value.displayWidth
+        val currentHeight = CaptureStateHolder.state.value.displayHeight
+        Log.i(TAG, "session=$sessionCounter $source: ${currentWidth}x${currentHeight} -> ${width}x${height} dpi=$densityDpi rotation=$displayRotation")
         val change = DisplayChangePolicy.classify(
-            CaptureStateHolder.state.value.displayWidth,
-            CaptureStateHolder.state.value.displayHeight,
+            currentWidth,
+            currentHeight,
             width,
             height,
         )
@@ -302,19 +359,26 @@ class CaptureSessionService : Service() {
             is DisplayChange.RotationOnly -> {
                 // The capture size is unchanged: only the rotation metadata needs updating.
                 updateDisplayRotation(displayRotation)
-                Log.i(TAG, "Display rotation updated to $displayRotation without resizing")
+                Log.i(TAG, "session=$sessionCounter rotation-only update: rotation=$displayRotation without resizing")
             }
 
             is DisplayChange.Resize -> {
                 try {
-                    val replacement = pipeline.prepareResize(width, height, densityDpi, displayRotation) ?: return
-                    // Caller owns cleanup after detach; VirtualDisplay must not retain a released Surface.
+                    val replacement = pipeline.prepareResize(width, height, densityDpi, displayRotation)
+                    if (replacement == null) {
+                        Log.i(TAG, "session=$sessionCounter resize no-op: dimensions already match")
+                        return
+                    }
+                    // Detach first: the VirtualDisplay must not retain a released Surface.
+                    Log.i(TAG, "session=$sessionCounter surface-detach from VirtualDisplay (previous generation)")
                     display.setSurface(null)
+                    Log.i(TAG, "session=$sessionCounter releasing previous ImageReader/surface/thread")
                     replacement.closePrevious()
+                    Log.i(TAG, "session=$sessionCounter surface-attach new reader generation to VirtualDisplay")
                     display.setSurface(replacement.surface)
                     display.resize(width, height, densityDpi)
                     CaptureStateHolder.updateDisplay(width, height, densityDpi)
-                    Log.i(TAG, "VirtualDisplay resized (${width}x${height}, ${densityDpi}dpi)")
+                    Log.i(TAG, "session=$sessionCounter virtual-display resized: ${width}x${height} dpi=$densityDpi generation=${pipeline.peekGeneration()}")
                 } catch (e: Exception) {
                     failProjectionSession("Failed to resize VirtualDisplay", e)
                 }
@@ -334,6 +398,11 @@ class CaptureSessionService : Service() {
     /**
      * Watches the default display so an orientation change is picked up even when the
      * captured content keeps its size and MediaProjection reports no resize.
+     *
+     * Sizing itself is re-checked here as well: on API levels below the captured-content
+     * callback (or whenever a rotation re-lays the display), the VirtualDisplay would
+     * otherwise keep the session-start dimensions forever (the whole-screen landscape
+     * bug). Both paths funnel into [recreateDisplay], which is idempotent.
      */
     private fun registerDisplayListener() {
         val manager = getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager ?: return
@@ -343,15 +412,24 @@ class CaptureSessionService : Service() {
 
             override fun onDisplayChanged(displayId: Int) {
                 if (displayId == Display.DEFAULT_DISPLAY) {
+                    Log.i(TAG, "session=$sessionCounter default-display changed")
                     updateDisplayRotation(currentDisplayRotation())
+                    val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                    val (width, height) = captureDimensions(wm)
+                    val current = CaptureStateHolder.state.value
+                    if (width != current.displayWidth || height != current.displayHeight) {
+                        Log.i(TAG, "session=$sessionCounter display metrics changed ${current.displayWidth}x${current.displayHeight} -> ${width}x${height}; resyncing capture size")
+                        recreateDisplay(width, height, source = "display-listener")
+                    }
                 }
             }
         }
         try {
             manager.registerDisplayListener(listener, null)
             displayListener = listener
+            Log.i(TAG, "session=$sessionCounter display listener registered")
         } catch (e: Exception) {
-            Log.w(TAG, "Display listener registration failed", e)
+            Log.w(TAG, "session=$sessionCounter display listener registration failed", e)
         }
     }
 
@@ -361,8 +439,9 @@ class CaptureSessionService : Service() {
         try {
             (getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
                 ?.unregisterDisplayListener(listener)
+            Log.i(TAG, "session=$sessionCounter display listener unregistered")
         } catch (e: Exception) {
-            Log.w(TAG, "Display listener unregister failed", e)
+            Log.w(TAG, "session=$sessionCounter display listener unregister failed", e)
         }
     }
 
@@ -382,21 +461,29 @@ class CaptureSessionService : Service() {
     }
 
     private fun releaseCaptureResources(releaseForeground: Boolean) {
+        Log.i(TAG, "session=$sessionCounter release: captureJob/frameJob/frozenJob cancelled=${captureJob != null || frameJob != null || frozenJob != null}")
         captureJob?.cancel()
         captureJob = null
         frameJob?.cancel()
         frameJob = null
-        try { virtualDisplay?.release() } catch (e: Exception) { Log.w(TAG, "VirtualDisplay release failed", e) }
+        frozenJob?.cancel()
+        frozenJob = null
+        try { virtualDisplay?.release() } catch (e: Exception) { Log.w(TAG, "session=$sessionCounter VirtualDisplay release failed", e) }
+        if (virtualDisplay != null) Log.i(TAG, "session=$sessionCounter virtual-display released")
         virtualDisplay = null
         unregisterDisplayListener()
         try {
             projection?.unregisterCallback(projectionCallback)
             projection?.stop()
+            Log.i(TAG, "session=$sessionCounter media-projection released")
         } catch (e: Exception) {
-            Log.w(TAG, "MediaProjection stop failed", e)
+            Log.w(TAG, "session=$sessionCounter MediaProjection stop failed", e)
         }
         projection = null
-        try { pipeline.stop() } catch (e: Exception) { Log.w(TAG, "Pipeline stop failed", e) }
+        if (::pipeline.isInitialized) {
+            CaptureFreeze.detachPipeline(pipeline)
+        }
+        try { pipeline.stop() } catch (e: Exception) { Log.w(TAG, "session=$sessionCounter Pipeline stop failed", e) }
         if (releaseForeground) {
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -442,7 +529,31 @@ class CaptureSessionService : Service() {
             .createNotificationChannel(channel)
     }
 
-    private fun buildNotification(): Notification {
+    /** Re-posts the ongoing notification with the current LIVE/FROZEN state and its action. */
+    private fun updateNotificationState(frozen: Boolean) {
+        if (!foregroundPromoted) {
+            Log.d(TAG, "Skipping notification update: service is not promoted")
+            return
+        }
+        if (!areNotificationsEnabled()) {
+            Log.w(TAG, "Notifications are disabled; the capture actions are not reachable from the shade")
+            return
+        }
+        try {
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .notify(NOTIFICATION_ID, buildNotification(frozen))
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to update the capture notification", e)
+        }
+    }
+
+    /** Android 13+ runtime-granted; API 24+ areNotificationsEnabled when present, safe otherwise. */
+    private fun areNotificationsEnabled(): Boolean = runCatching {
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+            .areNotificationsEnabled()
+    }.getOrDefault(true)
+
+    private fun buildNotification(frozen: Boolean = CaptureStateHolder.frozenFrame.value != null): Notification {
         val tapIntent = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java),
@@ -453,13 +564,33 @@ class CaptureSessionService : Service() {
             Intent(this, CaptureSessionService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val freezeIntent = PendingIntent.getService(
+            this, 2,
+            Intent(this, CaptureSessionService::class.java).setAction(ACTION_FREEZE),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val resumeCaptureIntent = PendingIntent.getService(
+            this, 3,
+            Intent(this, CaptureSessionService::class.java).setAction(ACTION_RESUME_LIVE),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val subText = if (frozen) getString(R.string.capture_frozen_subtext) else getString(R.string.capture_live_subtext)
+        val text = if (frozen) getString(R.string.capture_notification_frozen_text) else getString(R.string.capture_notification_text)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.capture_notification_title))
-            .setContentText(getString(R.string.capture_notification_text))
+            .setContentText(text)
+            .setSubText(subText)
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setContentIntent(tapIntent)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.capture_stop_action), stopIntent)
             .setOngoing(true)
+            .setShowWhen(false)
+        if (frozen) {
+            builder.addAction(android.R.drawable.ic_media_play, getString(R.string.capture_resume_capture_action), resumeCaptureIntent)
+        } else {
+            builder.addAction(android.R.drawable.ic_menu_camera, getString(R.string.capture_freeze_action), freezeIntent)
+        }
+        return builder
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.capture_stop_action), stopIntent)
             .build()
     }
 
@@ -468,6 +599,8 @@ class CaptureSessionService : Service() {
         const val ACTION_STOP = "com.draftlens.action.STOP_CAPTURE"
         const val ACTION_PAUSE = "com.draftlens.action.PAUSE_CAPTURE"
         const val ACTION_RESUME = "com.draftlens.action.RESUME_CAPTURE"
+        const val ACTION_FREEZE = "com.draftlens.action.FREEZE_CAPTURE"
+        const val ACTION_RESUME_LIVE = "com.draftlens.action.RESUME_LIVE_CAPTURE"
         const val EXTRA_RESULT_CODE = "extra_result_code"
         const val EXTRA_DATA = "extra_data"
         const val EXTRA_INTERVAL_MS = "extra_interval_ms"

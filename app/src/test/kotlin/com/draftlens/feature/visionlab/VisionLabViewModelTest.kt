@@ -31,28 +31,20 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Before
+import org.junit.BeforeClass
+import org.junit.AfterClass
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class VisionLabViewModelTest {
-
-    @Before fun setUp() {
-        Dispatchers.setMain(UnconfinedTestDispatcher())
-    }
-
-    @After fun tearDown() {
-        Dispatchers.resetMain()
-    }
 
     // region fakes
 
@@ -61,9 +53,26 @@ class VisionLabViewModelTest {
         override val frames: StateFlow<OriginalFrame?> = _frames.asStateFlow()
         private val _state = MutableStateFlow(VisionSourceState.CAPTURING)
         override val state: StateFlow<VisionSourceState> = _state.asStateFlow()
+        private val _frozenFrame = MutableStateFlow<OriginalFrame?>(null)
+        override val frozenFrame: StateFlow<OriginalFrame?> = _frozenFrame.asStateFlow()
 
         fun emit(frame: OriginalFrame?) {
             _frames.value = frame
+        }
+
+        /** Simulates a capture-side freeze command (e.g. from the notification). */
+        fun emitFrozen(frame: OriginalFrame?) {
+            _frozenFrame.value = frame
+        }
+
+        override fun freeze(): Boolean {
+            val frame = _frames.value ?: return false
+            _frozenFrame.value = frame
+            return true
+        }
+
+        override fun resume() {
+            _frozenFrame.value = null
         }
     }
 
@@ -145,9 +154,9 @@ class VisionLabViewModelTest {
 
     // endregion
 
-    private fun originalFrame(id: String, width: Int = 4, height: Int = 2) = OriginalFrame(
+    private fun originalFrame(id: String, width: Int = 16, height: Int = 16) = OriginalFrame(
         id = FrameId(id),
-        payload = PixelArrayFramePayload(width, height, IntArray(width * height) { it }),
+        payload = PixelArrayFramePayload(width, height, IntArray(width * height) { (it * 137) % 251 }),
         sourceWidth = width,
         sourceHeight = height,
         displayRotation = FrameRotation.ROTATION_0,
@@ -160,7 +169,7 @@ class VisionLabViewModelTest {
     @Test fun `clear cancels in flight processing and drops the late result`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame(BLOCKED_FRAME_ID))
         val preprocessor = BlockingFakePreprocessor()
-        val vm = VisionLabViewModel(source, preprocessor, FakeCalibrationRepository())
+        val vm = VisionLabViewModel(source, preprocessor, FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.processFrame()
         assertTrue("the request never reached the preprocessor", preprocessor.awaitEntered())
@@ -178,7 +187,7 @@ class VisionLabViewModelTest {
     @Test fun `save profile requires a frozen frame`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame("live"))
         val repository = FakeCalibrationRepository()
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository, heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.saveProfile("Ranked")
 
@@ -197,7 +206,7 @@ class VisionLabViewModelTest {
         )
         val source = FakeVisionFrameSource(originalFrame("live"))
         val repository = FakeCalibrationRepository(CalibrationLoadResult.Success(listOf(profile)))
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository, heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.updateProfile("p1", "Ranked")
 
@@ -216,7 +225,7 @@ class VisionLabViewModelTest {
         )
         val source = FakeVisionFrameSource(originalFrame("live"))
         val repository = FakeCalibrationRepository(CalibrationLoadResult.Success(listOf(profile)))
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository, heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.applyProfile("p1")
 
@@ -227,7 +236,7 @@ class VisionLabViewModelTest {
     @Test fun `a frozen frame satisfies the profile frame requirement`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame("live", width = 16, height = 9))
         val repository = FakeCalibrationRepository()
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository, heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.freeze()
         vm.saveProfile("Ranked")
@@ -237,7 +246,7 @@ class VisionLabViewModelTest {
 
     @Test fun `live frame is exposed in the ui state`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame("live"))
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository())
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         assertEquals("live", vm.uiState.value.liveFrame?.id?.value)
         assertEquals(VisionSourceState.CAPTURING, vm.uiState.value.sourceState)
@@ -454,15 +463,49 @@ class VisionLabViewModelTest {
         assertEquals(first.id, vm.uiState.value.selectedSlotId)
     }
 
+    // region hero recognition fixtures
+
+    private object EmptyTransport : com.draftlens.vision.heroes.HeroCatalogTransport {
+        override fun get(url: String, maxBytes: Long, accept: String?): com.draftlens.vision.heroes.HeroHttpResult =
+            com.draftlens.vision.heroes.HeroHttpResult.Failure("no catalog in this test")
+    }
+
+    private fun heroCatalog(): com.draftlens.vision.heroes.FileHeroCatalogRepository =
+        com.draftlens.vision.heroes.FileHeroCatalogRepository(
+            java.nio.file.Files.createTempDirectory("hero-catalog").toFile(),
+            java.nio.file.Files.createTempDirectory("hero-assets").toFile(),
+            EmptyTransport,
+        )
+
+    private fun heroStore(): com.draftlens.datastore.HeroRecognitionStore =
+        com.draftlens.datastore.HeroRecognitionStore(
+            androidx.datastore.preferences.core.PreferenceDataStoreFactory.create(
+                scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob()),
+            ) { java.io.File(java.nio.file.Files.createTempDirectory("hero-confirmations").toFile(), "confirmations.preferences_pb") },
+        )
+
+    // endregion
+
+    private fun eventually(timeoutMs: Long = 10_000L, condition: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (condition()) return
+            Thread.sleep(20)
+        }
+        org.junit.Assert.fail("condition not met within $timeoutMs ms")
+    }
+
     private fun slotVm(): VisionLabViewModel = VisionLabViewModel(
         FakeVisionFrameSource(originalFrame("live")),
         EchoPreprocessor(),
         FakeCalibrationRepository(),
+        heroCatalog = heroCatalog(),
+        heroRecognitionStore = heroStore(),
     )
 
     @Test fun `freeze pins the current frame while live frames continue`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame("first"))
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository())
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.freeze()
         source.emit(originalFrame("second"))
@@ -474,7 +517,7 @@ class VisionLabViewModelTest {
 
     @Test fun `resume releases the pinned frame`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame("first"))
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository())
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.freeze()
         vm.resume()
@@ -483,9 +526,48 @@ class VisionLabViewModelTest {
         assertEquals("first", vm.uiState.value.displayFrame?.id?.value)
     }
 
+    @Test fun `a capture-side freeze pins the frame while live frames keep arriving`() = runBlocking {
+        val source = FakeVisionFrameSource(originalFrame("game"))
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
+
+        // Simulates the notification action: the capture side pins the latest game frame.
+        source.emitFrozen(originalFrame("game"))
+        // Newer frames (the DraftLens UI itself) must never replace the pinned frame.
+        source.emit(originalFrame("draftlens-self"))
+
+        assertEquals("game", vm.uiState.value.frozenFrame?.id?.value)
+        assertEquals("game", vm.uiState.value.displayFrame?.id?.value)
+        assertEquals("draftlens-self", vm.uiState.value.liveFrame?.id?.value)
+        assertTrue(vm.uiState.value.isFrozen)
+    }
+
+    @Test fun `resume from the ui reveals live frames again after a capture-side freeze`() = runBlocking {
+        val source = FakeVisionFrameSource(originalFrame("game"))
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
+
+        source.emitFrozen(originalFrame("game"))
+        source.emit(originalFrame("new-live"))
+
+        vm.resume()
+
+        withTimeout(10_000) { vm.uiState.first { it.frozenFrame == null } }
+        assertEquals("new-live", vm.uiState.value.displayFrame?.id?.value)
+        assertFalse(vm.uiState.value.isFrozen)
+    }
+
+    @Test fun `freeze without a captured frame reports a message instead of pinning nothing`() = runBlocking {
+        val source = FakeVisionFrameSource(null)
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
+
+        vm.freeze()
+
+        assertNull(vm.uiState.value.frozenFrame)
+        assertTrue(vm.uiState.value.message!!.contains("No captured frame"))
+    }
+
     @Test fun `clear releases the pinned frame and the processed frame`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame("first"))
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository())
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.freeze()
         vm.processFrame()
@@ -499,7 +581,7 @@ class VisionLabViewModelTest {
 
     @Test fun `process frame publishes the processed frame`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame("live"))
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository())
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.processFrame()
         val state = withTimeout(10_000) { vm.uiState.first { it.processed != null } }
@@ -511,7 +593,7 @@ class VisionLabViewModelTest {
     @Test fun `stale processing result is discarded after a newer request`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame(BLOCKED_FRAME_ID))
         val preprocessor = BlockingFakePreprocessor()
-        val vm = VisionLabViewModel(source, preprocessor, FakeCalibrationRepository())
+        val vm = VisionLabViewModel(source, preprocessor, FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.processFrame()
         // The first request must be inside the preprocessor before the second one supersedes it;
@@ -532,7 +614,7 @@ class VisionLabViewModelTest {
 
     @Test fun `processing failure is reported honestly`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame("live"))
-        val vm = VisionLabViewModel(source, FailingPreprocessor(), FakeCalibrationRepository())
+        val vm = VisionLabViewModel(source, FailingPreprocessor(), FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.processFrame()
         val state = withTimeout(10_000) { vm.uiState.first { it.processStatus == ProcessStatus.FAILED } }
@@ -543,7 +625,7 @@ class VisionLabViewModelTest {
 
     @Test fun `process frame without a frame reports an error`() = runBlocking {
         val source = FakeVisionFrameSource(null)
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository())
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.processFrame()
 
@@ -554,7 +636,7 @@ class VisionLabViewModelTest {
     @Test fun `save profile is refused when the document schema is unsupported`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame("live"))
         val repository = FakeCalibrationRepository(CalibrationLoadResult.UnsupportedSchema("too new"))
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository, heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.saveProfile("Ranked")
 
@@ -565,7 +647,7 @@ class VisionLabViewModelTest {
     @Test fun `delete all calibration data stays available when the schema is unsupported`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame("live"))
         val repository = FakeCalibrationRepository(CalibrationLoadResult.UnsupportedSchema("too new"))
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository, heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.deleteAllProfiles()
 
@@ -575,7 +657,7 @@ class VisionLabViewModelTest {
     @Test fun `save profile stores the current slots and the oriented aspect ratio`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame("live", width = 16, height = 9))
         val repository = FakeCalibrationRepository()
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository, heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.1f, 0.1f, 0.2f, 0.2f))
         vm.freeze()
@@ -599,7 +681,7 @@ class VisionLabViewModelTest {
         )
         val source = FakeVisionFrameSource(originalFrame("live", width = 10, height = 10))
         val repository = FakeCalibrationRepository(CalibrationLoadResult.Success(listOf(profile)))
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository, heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.freeze()
         vm.applyProfile("p1")
@@ -628,7 +710,7 @@ class VisionLabViewModelTest {
         )
         val source = FakeVisionFrameSource(originalFrame("live", width = 16, height = 9))
         val repository = FakeCalibrationRepository(CalibrationLoadResult.Success(listOf(profile)))
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository, heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.6f, 0.6f, 0.7f, 0.7f))
         vm.freeze()
@@ -660,7 +742,7 @@ class VisionLabViewModelTest {
         )
         val source = FakeVisionFrameSource(originalFrame("live", width = 16, height = 9))
         val repository = FakeCalibrationRepository(CalibrationLoadResult.Success(listOf(profile)))
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository)
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), repository, heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.6f, 0.6f, 0.7f, 0.7f))
         vm.freeze()
@@ -674,7 +756,7 @@ class VisionLabViewModelTest {
 
     @Test fun `slot index that duplicates another slot in the same scope is rejected`() = runBlocking {
         val source = FakeVisionFrameSource(originalFrame("live"))
-        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository())
+        val vm = VisionLabViewModel(source, EchoPreprocessor(), FakeCalibrationRepository(), heroCatalog = heroCatalog(), heroRecognitionStore = heroStore())
 
         vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.1f, 0.1f, 0.2f, 0.2f))
         vm.addSlot(SlotType.BAN, SlotTeam.ALLY, NormalizedRect(0.4f, 0.4f, 0.5f, 0.5f))
@@ -686,9 +768,286 @@ class VisionLabViewModelTest {
         assertEquals(2, vm.uiState.value.slots[1].index)
     }
 
-    private companion object {
+    // region hero recognition
+
+    private class RoutesTransport(
+        private val routes: Map<String, com.draftlens.vision.heroes.HeroHttpResult>,
+    ) : com.draftlens.vision.heroes.HeroCatalogTransport {
+        override fun get(url: String, maxBytes: Long, accept: String?): com.draftlens.vision.heroes.HeroHttpResult =
+            routes[url] ?: com.draftlens.vision.heroes.HeroHttpResult.Failure("no route", 404)
+    }
+
+    private val fakePng = com.draftlens.vision.testRealPng()
+
+    private fun gradient(size: Int = 32): IntArray =
+        IntArray(size * size) { i ->
+            val x = i % size
+            val y = i / size
+            0xFF000000.toInt() or (x * 255 / size) or ((y * 255 / size) shl 8) or (((x + y) * 255 / (size + size)) shl 16)
+        }
+
+    private fun heroEntryJson(): String = """
+        {"code":0,"message":"OK","data":{"records":[
+          {"data":{"hero":{"data":{"head":"https://wsrv.nl/?url=miya.head","name":"Miya","smallmap":"https://wsrv.nl/?url=miya.map"}},"hero_id":1}},
+          {"data":{"hero":{"data":{"head":"https://wsrv.nl/?url=layla.head","name":"Layla","smallmap":"https://wsrv.nl/?url=layla.map"}},"hero_id":2}}
+        ],"total":2}}
+    """.trimIndent()
+
+    private fun happyRoutes(): Map<String, com.draftlens.vision.heroes.HeroHttpResult> = mapOf(
+        "https://arena.fastapicloud.dev/api/heroes?size=100&index=1&lang=en" to
+            com.draftlens.vision.heroes.HeroHttpResult.Success(com.draftlens.vision.heroes.HeroHttpResponse(heroEntryJson().toByteArray(), "application/json")),
+        "https://wsrv.nl/?url=miya.head" to
+            com.draftlens.vision.heroes.HeroHttpResult.Success(com.draftlens.vision.heroes.HeroHttpResponse(fakePng, "image/png")),
+        "https://wsrv.nl/?url=layla.head" to
+            com.draftlens.vision.heroes.HeroHttpResult.Success(com.draftlens.vision.heroes.HeroHttpResponse(fakePng, "image/png")),
+        "https://mlbbdex.com/api/v1/heroes" to
+            com.draftlens.vision.heroes.HeroHttpResult.Failure("offline", 503),
+    )
+
+    private fun recognitionVm(
+        frame: OriginalFrame? = null,
+        referencePixels: IntArray = gradient(16),
+        recognitionStore: com.draftlens.datastore.HeroRecognitionStore = heroStore(),
+    ): VisionLabViewModel {
+        val repo = com.draftlens.vision.heroes.FileHeroCatalogRepository(
+            java.nio.file.Files.createTempDirectory("hero-catalog").toFile(),
+            java.nio.file.Files.createTempDirectory("hero-assets").toFile(),
+            RoutesTransport(happyRoutes()),
+        )
+        // A textured frame matching the injected reference, so matching is deterministic.
+        val actualFrame = frame ?: OriginalFrame(
+            id = FrameId("live"),
+            payload = PixelArrayFramePayload(16, 16, gradient(16)),
+            sourceWidth = 16,
+            sourceHeight = 16,
+            displayRotation = FrameRotation.ROTATION_0,
+            rotation = FrameRotation.ROTATION_0,
+            capturedAtElapsedRealtimeMs = 10_000,
+            wallClockTimestampMs = 1_700_000_000_000,
+            captureLatencyMs = 4,
+        )
+        return VisionLabViewModel(
+            FakeVisionFrameSource(actualFrame),
+            EchoPreprocessor(),
+            FakeCalibrationRepository(),
+            heroCatalog = repo,
+            heroRecognitionStore = recognitionStore,
+            referenceLoader = { _, entry -> com.draftlens.vision.heroes.HeroReference(entry, referencePixels, 16, 16) },
+        )
+    }
+
+    @Test fun `identify without a selected slot reports a message`() = runBlocking {
+        val vm = recognitionVm()
+
+        vm.identifySelectedSlot()
+
+        assertTrue("message was: ${vm.uiState.value.message}", vm.uiState.value.message!!.contains("Select a slot"))
+    }
+
+    @Test fun `identify without a synced catalog fails honestly instead of guessing`() = runBlocking {
+        val vm = recognitionVm()
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
+
+        vm.identifySelectedSlot()
+        eventually(5_000) {
+            vm.uiState.value.heroRecognition[vm.uiState.value.slots.single().id]?.phase == HeroSlotPhase.FAILED
+        }
+        val slotId = vm.uiState.value.slots.single().id
+
+        assertEquals(HeroSlotPhase.FAILED, vm.uiState.value.heroRecognition[slotId]!!.phase)
+        assertTrue(
+            vm.uiState.value.heroRecognition[slotId]!!.message!!.contains("Sync the hero catalog"),
+        )
+    }
+
+    @Test fun `a synced catalog produces ranked candidates for the selected slot`() = runBlocking {
+        val vm = recognitionVm()
+        vm.syncHeroCatalog()
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
+        val slotId = vm.uiState.value.slots.single().id
+
+        vm.identifySelectedSlot()
+        eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CANDIDATES }
+
+        val candidates = vm.uiState.value.heroRecognition[slotId]!!.candidates
+        assertTrue(candidates.isNotEmpty())
+        assertEquals(2, candidates.size.coerceAtMost(2))
+    }
+
+    @Test fun `confirming a candidate persists the hero and clearing removes it`() = runBlocking {
+        val vm = recognitionVm()
+        vm.syncHeroCatalog()
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
+        val slotId = vm.uiState.value.slots.single().id
+        vm.identifySelectedSlot()
+        eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CANDIDATES }
+
+        vm.confirmHero(slotId, "miya")
+        eventually(5_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CONFIRMED }
+        assertEquals("Miya", vm.uiState.value.heroRecognition[slotId]!!.message)
+
+        vm.clearHeroConfirmation(slotId)
+        eventually(5_000) { vm.uiState.value.heroRecognition[slotId] == null }
+        assertNull(vm.uiState.value.heroRecognition[slotId])
+    }
+
+    @Test fun `the search filters the cached catalog by name`() = runBlocking {
+        val vm = recognitionVm()
+        vm.syncHeroCatalog()
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
+
+        val results = vm.searchCatalog("mi")
+
+        assertEquals(listOf("Miya"), results.map { it.canonicalName })
+        assertTrue(vm.searchCatalog("").isEmpty())
+        assertTrue(vm.searchCatalog("zzz-nobody").isEmpty())
+    }
+
+    private fun inverseGradient(size: Int = 16): IntArray =
+        IntArray(size * size) { gradient(size)[it].let { p ->
+            0xFF000000.toInt() or
+                (255 - ((p shr 16) and 0xFF)) or
+                ((255 - ((p shr 8) and 0xFF)) shl 8) or
+                (255 - (p and 0xFF))
+        } }
+
+    private fun storeAt(file: java.io.File): com.draftlens.datastore.HeroRecognitionStore =
+        com.draftlens.datastore.HeroRecognitionStore(
+            androidx.datastore.preferences.core.PreferenceDataStoreFactory.create(
+                scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob()),
+            ) { file },
+        )
+
+    @Test fun `a uniform gray crop produces InsufficientVisualInformation instead of candidates`() = runBlocking {
+        val blank = OriginalFrame(
+            id = FrameId("blank"),
+            payload = PixelArrayFramePayload(16, 16, IntArray(16 * 16) { 0xFF808080.toInt() }),
+            sourceWidth = 16,
+            sourceHeight = 16,
+            displayRotation = FrameRotation.ROTATION_0,
+            rotation = FrameRotation.ROTATION_0,
+            capturedAtElapsedRealtimeMs = 10_000,
+            wallClockTimestampMs = 1_700_000_000_000,
+            captureLatencyMs = 4,
+        )
+        val vm = recognitionVm(frame = blank)
+        vm.syncHeroCatalog()
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
+        val slotId = vm.uiState.value.slots.single().id
+
+        vm.identifySelectedSlot()
+        eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.INSUFFICIENT_INFO }
+
+        val slot = vm.uiState.value.heroRecognition[slotId]!!
+        assertEquals(HeroSlotPhase.INSUFFICIENT_INFO, slot.phase)
+        assertTrue("candidates must never appear for a blank crop", slot.candidates.isEmpty())
+        assertTrue(
+            "message was: ${slot.message}",
+            slot.message!!.contains("Not enough visual information"),
+        )
+    }
+
+    @Test fun `a textured crop matching nothing keeps a distinct NoMatch state`() = runBlocking {
+        val vm = recognitionVm(referencePixels = inverseGradient(16))
+        vm.syncHeroCatalog()
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
+        val slotId = vm.uiState.value.slots.single().id
+
+        vm.identifySelectedSlot()
+        eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.NO_MATCH }
+
+        val slot = vm.uiState.value.heroRecognition[slotId]!!
+        assertEquals(HeroSlotPhase.NO_MATCH, slot.phase)
+        assertNotNull(slot.bestSimilarity)
+    }
+
+    @Test fun `a confirmation that cannot be persisted is reported and never shown as successful`() = runBlocking {
+        val dir = java.nio.file.Files.createTempDirectory("hero-confirmations").toFile()
+        val store = storeAt(java.io.File(dir, "confirmations.preferences_pb"))
+        val vm = recognitionVm(recognitionStore = store)
+        vm.syncHeroCatalog()
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
+        val slotId = vm.uiState.value.slots.single().id
+        vm.identifySelectedSlot()
+        eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CANDIDATES }
+
+        // Sabotage the store: the directory where the document lives becomes a file,
+        // so the next write cannot succeed no matter what the store recreates.
+        dir.deleteRecursively()
+        java.io.File(dir.path).writeText("file")
+        vm.confirmHero(slotId, "miya")
+        eventually(5_000) { vm.uiState.value.message?.contains("could not be saved") == true }
+
+        assertEquals(HeroSlotPhase.CANDIDATES, vm.uiState.value.heroRecognition[slotId]?.phase)
+    }
+
+    @Test fun `a confirmation that cannot be cleared is reported and never removed silently`() = runBlocking {
+        val dir = java.nio.file.Files.createTempDirectory("hero-confirmations").toFile()
+        val store = storeAt(java.io.File(dir, "confirmations.preferences_pb"))
+        val vm = recognitionVm(recognitionStore = store)
+        vm.syncHeroCatalog()
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
+        val slotId = vm.uiState.value.slots.single().id
+        vm.identifySelectedSlot()
+        eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CANDIDATES }
+        vm.confirmHero(slotId, "miya")
+        eventually(5_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CONFIRMED }
+
+        // Sabotage the store the same way, then try to clear.
+        dir.deleteRecursively()
+        java.io.File(dir.path).writeText("file")
+        vm.clearHeroConfirmation(slotId)
+        eventually(5_000) { vm.uiState.value.message?.contains("could not be cleared") == true }
+
+        assertEquals(HeroSlotPhase.CONFIRMED, vm.uiState.value.heroRecognition[slotId]?.phase)
+    }
+
+    @Test fun `correcting a candidate directly works without clearing first`() = runBlocking {
+        val vm = recognitionVm()
+        vm.syncHeroCatalog()
+        eventually(10_000) { vm.uiState.value.heroCatalog is com.draftlens.vision.heroes.HeroCatalogState.Ready }
+        vm.createSlot(NormalizedRect(0f, 0f, 1f, 1f))
+        val slotId = vm.uiState.value.slots.single().id
+        vm.identifySelectedSlot()
+        eventually(10_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CANDIDATES }
+        vm.confirmHero(slotId, "miya")
+        eventually(5_000) { vm.uiState.value.heroRecognition[slotId]?.phase == HeroSlotPhase.CONFIRMED }
+
+        // Correct the confirmation directly; the user must not clear or re-identify first.
+        vm.confirmHero(slotId, "layla")
+        eventually(5_000) { vm.uiState.value.heroRecognition[slotId]?.let { it.phase == HeroSlotPhase.CONFIRMED && it.message == "Layla" } == true }
+
+        val state = vm.uiState.value.heroRecognition[slotId]!!
+        assertEquals(HeroSlotPhase.CONFIRMED, state.phase)
+        assertEquals("Layla", state.message)
+    }
+
+    // endregion
+
+    companion object {
         /** The frame id whose processing call the fake blocks. */
         const val BLOCKED_FRAME_ID = "first"
+
+        // One Main for the whole class: per-test set/reset raced with the VM's background
+        // collectors (the delegate's NonConcurrentlyModifiable throws when a dispatch lands
+        // mid-mutation). Modify Main once at both ends instead.
+        @JvmStatic
+        @BeforeClass
+        fun setUpClass() {
+            Dispatchers.setMain(UnconfinedTestDispatcher())
+        }
+
+        @JvmStatic
+        @AfterClass
+        fun tearDownClass() {
+            runCatching { Dispatchers.resetMain() }
+        }
     }
 }
 
