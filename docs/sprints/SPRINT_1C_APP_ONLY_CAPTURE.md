@@ -177,5 +177,8 @@ seq/readiness logs, per-stage drop reasons, no pixels); then the fix: service-ow
 UNKNOWN/VISIBLE/HIDDEN policy (UNKNOWN intentionally open, first frame promotes to VISIBLE),
 service-owned `PendingResize` applied to both VirtualDisplay and ImageReader at startup,
 no pipeline-side visibility reset, and holder delivery of frames published during STARTING.
-See `docs/IMPLEMENTATION_REPORT.md` and the focused A–E device test in
+CI run 43936524131 at head `3c7b58c`: **926 unit tests, 0 failures**; lint,
+`assembleAndroidTest`, `assembleDebug` green; APK sha256
+`ade9ec10c5d6b9d4e372b325e6b521f87170d0fa5273c9b30e9ea9063a763070`. See
+`docs/IMPLEMENTATION_REPORT.md` and the focused A–E device test in
 `docs/TESTING_PHYSICAL_DEVICE.md` (**NOT RUN**).

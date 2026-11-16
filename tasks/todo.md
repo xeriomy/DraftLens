@@ -150,4 +150,4 @@ Verification runs in GitHub Actions because the authoring host has no Android to
 - [x] Diagnostics before policy change (`CaptureDiagnostics`)
 - [x] Explicit visibility state model + pending captured-content resize; startup ordering fixed
 - [x] JVM regression tests + physical-device A–E checklist (NOT RUN)
-- [ ] Task 10: CI green record + APK digest; report
+- [x] Task 10: CI green record (run 43936524131 at `3c7b58c`: 926 unit tests, 0 failures; APK sha256 `ade9…`); report

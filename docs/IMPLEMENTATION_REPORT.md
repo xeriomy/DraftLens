@@ -720,7 +720,10 @@ rejected, or did the platform deliver none?" — see `docs/TESTING_PHYSICAL_DEVI
 
 ## Verification
 
-- CI head / APK digest: see the PR #4 description (edited after each green run).
+- Implementation head `3c7b58c`: CI run 43936524131 — **926 unit tests, 0 failures / 0 errors / 0 skipped**;
+  strict lint green; `assembleAndroidTest` green; `assembleDebug` green; APK `app-debug.apk`
+  sha256 `ade9ec10c5d6b9d4e372b325e6b521f87170d0fa5273c9b30e9ea9063a763070`. Docs-only commits
+  after it change no build inputs and are re-checked by CI on every push.
 - Instrumented tests: compiled, not executed (no KVM on the runner).
 - Physical device: the A–E first-frame checklist and rows 44–53 of
   `docs/TESTING_PHYSICAL_DEVICE.md` are **NOT RUN**. This fix is not claimed to work on a
