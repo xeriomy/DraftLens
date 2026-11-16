@@ -119,7 +119,8 @@ class FramePipeline(
         width: Int,
         height: Int,
         densityDpi: Int,
-        initialDisplayRotation: FrameRotation = FrameRotation.ROTATION_0
+        initialDisplayRotation: FrameRotation = FrameRotation.ROTATION_0,
+        resetVisibility: Boolean = true,
     ) {
         stopInternal(release = true)
         displayWidth = width
@@ -128,8 +129,9 @@ class FramePipeline(
         handlerThread = HandlerThread("draftlens-capture").also { it.start() }
         val handler = Handler(handlerThread!!.looper)
         val generationAtStart = generation.bump()
-        // A fresh session starts with the window visible; the callback will correct this.
-        visibility.onContentVisibilityChanged(true)
+        // A fresh capture session starts with the window visible; the callback will correct this.
+        // A resize re-creation keeps the current gate state (a hidden window stays hidden).
+        if (resetVisibility) visibility.onContentVisibilityChanged(true)
         Log.i(TAG, "pipeline start: width=$width height=$height density=$densityDpi rotation=$initialDisplayRotation generation=$generationAtStart")
 
         imageReader = ImageReader.newInstance(width, height, android.graphics.PixelFormat.RGBA_8888, 3).also { reader ->
@@ -327,7 +329,7 @@ class FramePipeline(
         displayHeight = 0
 
         try {
-            start(newWidth, newHeight, densityDpi, initialDisplayRotation)
+            start(newWidth, newHeight, densityDpi, initialDisplayRotation, resetVisibility = false)
         } catch (e: Exception) {
             // Discard partially created replacement resources and restore the previous session.
             runCatching { surface?.release() }
