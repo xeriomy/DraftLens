@@ -41,6 +41,6 @@ single capture-freeze control.
 
 CI is the build of record: `test`, `assembleAndroidTest` (compile only), `lint`,
 `assembleDebug`, APK upload and manifest inspection run on every push and pull request in
-`.github/workflows/build.yml`. The latest merged head was `60dd412`; see
-`docs/IMPLEMENTATION_REPORT.md` for the current summary and `docs/VISION_TESTING.md` for the
-test inventory.
+`.github/workflows/build.yml`. The latest verification record is PR #5 head `4eb9948`; see
+`docs/IMPLEMENTATION_REPORT.md` for the summary and `docs/VISION_TESTING.md` for the test
+inventory.

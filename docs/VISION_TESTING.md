@@ -7,8 +7,9 @@ GitHub Actions is the build of record. `.github/workflows/build.yml` runs `test`
 every push and pull request. `main` is protected by the build check.
 
 The authoring host is aarch64 while the SDK's `aapt2` is x86_64-only, so resource-touching
-Gradle tasks cannot run locally here. At head `60dd412` CI reported **926 unit tests, 0
-failures, 0 errors, 0 skipped**, strict lint passing, and instrumentation compiled.
+Gradle tasks cannot run locally here. At the PR #5 verification head `4eb9948`, CI reported
+**918 unit tests, 0 failures, 0 errors, 0 skipped**, strict lint passing, and instrumentation
+compiled.
 
 ## JVM unit tests
 

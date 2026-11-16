@@ -1,7 +1,7 @@
 # Implementation report
 
-**Current head:** `60dd412` on `main` · **CI:** green, run `43938370022`
-(926 unit tests, 0 failures, 0 errors, 0 skipped)
+**Verification head:** `4eb9948` (PR #5) · **CI:** green, run `43942122777`
+(918 unit tests, 0 failures, 0 errors, 0 skipped)
 
 This report describes what the merged code contains and what has actually been verified. The
 sprint documents in `docs/sprints/` and `docs/superpowers/` are historical records.
@@ -24,9 +24,9 @@ confirmation storage.
 
 ## Verification evidence
 
-| Gate | Result at head `60dd412` |
+| Gate | Result at head `4eb9948` |
 |---|---|
-| `./gradlew test` | 926 unit tests, 0 failures, 0 errors, 0 skipped |
+| `./gradlew test` | 918 unit tests, 0 failures, 0 errors, 0 skipped |
 | `./gradlew lint` | passes with `abortOnError = true` |
 | `./gradlew assembleAndroidTest` | instrumented tests compile |
 | `./gradlew assembleDebug` | debug APK produced and uploaded |
