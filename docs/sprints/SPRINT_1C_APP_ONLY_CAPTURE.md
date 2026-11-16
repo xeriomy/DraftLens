@@ -92,10 +92,8 @@ can establish it per device/OEM.
 CI (GitHub Actions, ubuntu-latest) is the build of record — the authoring host has no
 Android toolchain.
 
-- CI head: **PENDING** (filled after the green run)
-- Unit tests: **PENDING**
+- CI head / unit totals / APK digest: recorded in the PR #4 description (edited after the final green run)
 - Instrumentation: **compiled via `assembleAndroidTest`; not executed** (no KVM on the runner)
-- Debug APK artifact: **PENDING**
 - Physical-device rows 33–43: **NOT RUN** — see `docs/TESTING_PHYSICAL_DEVICE.md`
 
 ## Explicitly not built (scope restrictions)
