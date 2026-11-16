@@ -10,4 +10,6 @@
     <string name="capture_freeze_action">Freeze current frame</string>
     <string name="capture_resume_capture_action">Resume live capture</string>
     <string name="detection_not_implemented">Not implemented in Sprint 0</string>
+    <string name="floating_control_live_description">Freeze the game frame</string>
+    <string name="floating_control_frozen_description">Resume live capture</string>
 </resources>

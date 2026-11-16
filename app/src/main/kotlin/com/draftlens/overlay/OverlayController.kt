@@ -1,0 +1,190 @@
+package com.draftlens.overlay
+
+import android.content.Context
+import android.graphics.PixelFormat
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import android.view.Gravity
+import android.view.WindowManager
+import com.draftlens.capture.CaptureFreeze
+import com.draftlens.capture.CaptureStateHolder
+import com.draftlens.datastore.AppPreferencesRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+
+/**
+ * Owns the WindowManager side of the single circular floating control. Attached only while
+ * a capture session is running (by [CaptureSessionService][com.draftlens.capture.CaptureSessionService]), always removed on teardown. Holds no
+ * capture state of its own; the tap toggles the shared freeze path and the glyph follows
+ * [CaptureStateHolder.frozenFrame].
+ *
+ * The window is exactly button-sized and non-focusable: touches outside the circle go to
+ * the app underneath, and the control never takes keyboard focus from the game.
+ */
+class OverlayController(
+    private val context: Context,
+    private val preferences: AppPreferencesRepository,
+    private val scope: CoroutineScope,
+) {
+    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private var view: FloatingControlView? = null
+    private var layoutParams: WindowManager.LayoutParams? = null
+    private val sizePx = (context.resources.displayMetrics.density * SIZE_DP).toInt()
+
+    @Volatile
+    private var currentNormalized = OverlayPosition.Normalized(x = 1f, y = DEFAULT_Y_FRACTION)
+
+    val isAttached: Boolean get() = view != null
+
+    /** Reads the persisted position, then adds the overlay. Main thread. */
+    fun show(screenWidthPx: Int, screenHeightPx: Int) {
+        if (view != null) {
+            Log.i(TAG, "overlay already attached; skipping show()")
+            return
+        }
+        scope.launch {
+            val persisted = runCatching { preferences.floatingPosition.first() }.getOrNull()
+            val normalized = persisted ?: currentNormalized
+            currentNormalized = normalized
+            mainHandler.post { attachView(screenWidthPx, screenHeightPx, normalized) }
+        }
+    }
+
+    private fun attachView(screenWidthPx: Int, screenHeightPx: Int, normalized: OverlayPosition.Normalized) {
+        if (view != null) return // a configure change raced the show() coroutine
+
+        val px = OverlayPosition.normalizedToPixels(normalized, screenWidthPx, screenHeightPx, sizePx)
+        val button = FloatingControlView(
+            context,
+            onTap = { toggleFreeze() },
+            onDragStart = { rawX, rawY -> beginDrag(rawX, rawY) },
+            onDragMove = { rawX, rawY -> dragTo(rawX, rawY, screenWidthPx, screenHeightPx) },
+            onDragEnd = { endDrag(screenWidthPx, screenHeightPx) },
+        )
+        button.setFrozen(CaptureStateHolder.frozenFrame.value != null)
+
+        val params = WindowManager.LayoutParams(
+            sizePx,
+            sizePx,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = px.left
+            y = px.top
+        }
+
+        try {
+            windowManager.addView(button, params)
+            view = button
+            layoutParams = params
+            Log.i(TAG, "overlay attached: sizePx=$sizePx x=${params.x} y=${params.y}")
+        } catch (e: Exception) {
+            // Missing overlay permission or a bad window state: capture and the in-app
+            // Freeze/Resume keep working; never crash the capture session over the control.
+            Log.w(TAG, "overlay attach failed; capture continues without the floating control", e)
+            view = null
+            layoutParams = null
+        }
+    }
+
+    /** Re-derives the pixel position from the normalized one after a resize/rotation. */
+    fun onDisplayMetricsChanged(screenWidthPx: Int, screenHeightPx: Int) {
+        val params = layoutParams ?: return
+        val button = view ?: return
+        val px = OverlayPosition.normalizedToPixels(currentNormalized, screenWidthPx, screenHeightPx, sizePx)
+        params.x = px.left
+        params.y = px.top
+        try {
+            windowManager.updateViewLayout(button, params)
+        } catch (e: Exception) {
+            Log.w(TAG, "overlay reposition failed; detaching", e)
+            detach()
+        }
+    }
+
+    fun setFrozen(frozen: Boolean) {
+        mainHandler.post { view?.setFrozen(frozen) }
+    }
+
+    /** Removes the overlay. Safe from any thread and when not attached. */
+    fun detach() {
+        val detachBlock = Runnable {
+            val button = view ?: return@Runnable
+            try {
+                windowManager.removeView(button)
+                Log.i(TAG, "overlay detached")
+            } catch (e: Exception) {
+                Log.w(TAG, "overlay detach failed", e)
+            }
+            view = null
+            layoutParams = null
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            detachBlock.run()
+        } else {
+            mainHandler.post(detachBlock)
+        }
+    }
+
+    private var grabOffsetX = 0f
+    private var grabOffsetY = 0f
+
+    private fun beginDrag(rawX: Float, rawY: Float) {
+        val params = layoutParams ?: return
+        grabOffsetX = rawX - params.x
+        grabOffsetY = rawY - params.y
+    }
+
+    private fun dragTo(rawX: Float, rawY: Float, screenWidthPx: Int, screenHeightPx: Int) {
+        val params = layoutParams ?: return
+        val button = view ?: return
+        val clamped = OverlayPosition.clampToScreen(
+            (rawX - grabOffsetX).toInt(),
+            (rawY - grabOffsetY).toInt(),
+            screenWidthPx,
+            screenHeightPx,
+            sizePx,
+        )
+        params.x = clamped.left
+        params.y = clamped.top
+        runCatching { windowManager.updateViewLayout(button, params) }
+    }
+
+    private fun endDrag(screenWidthPx: Int, screenHeightPx: Int) {
+        val params = layoutParams ?: return
+        val button = view ?: return
+        val snapped = OverlayPosition.snapToNearestEdge(params.x, params.y, screenWidthPx, screenHeightPx, sizePx)
+        params.x = snapped.left
+        params.y = snapped.top
+        runCatching { windowManager.updateViewLayout(button, params) }
+
+        val normalized = OverlayPosition.pixelsToNormalized(snapped.left, snapped.top, screenWidthPx, screenHeightPx, sizePx)
+        currentNormalized = normalized
+        scope.launch {
+            runCatching { preferences.setFloatingPosition(normalized) }
+                .onFailure { Log.w(TAG, "failed to persist overlay position", it) }
+        }
+        Log.i(TAG, "overlay snapped to ${snapped.edge} (normalized ${normalized.x}, ${normalized.y})")
+    }
+
+    private fun toggleFreeze() {
+        if (CaptureStateHolder.frozenFrame.value != null) {
+            CaptureFreeze.resumeLive()
+        } else {
+            CaptureFreeze.freezeCurrentFrame()
+        }
+        // The service collects frozenFrame and repaints the glyph through setFrozen().
+    }
+
+    private companion object {
+        const val TAG = "OverlayController"
+        const val SIZE_DP = 52 // within the 48–56dp visual range
+        const val DEFAULT_Y_FRACTION = 0.18f // upper area, away from the central draft region
+    }
+}
