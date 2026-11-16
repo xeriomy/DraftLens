@@ -1,175 +1,100 @@
 # Vision Lab
 
-The Vision Lab is the second tab of the app. The first tab, Debug Capture, stays one tap away
-and capture keeps running while the Vision Lab is open — the projection lives in a foreground
-service, not in a screen.
+The Vision Lab is the second tab. Capture lives in the foreground service, so switching tabs
+never stops it. The page has six cards: frame preview, annotation canvas, manual slots,
+hero recognition, processing inspector and calibration profiles.
 
-## Frame Preview
+## Frame preview
 
-Shows the frozen frame when one is pinned, otherwise the latest live frame.
+Shows the pinned frame when one is frozen, otherwise the latest live frame, and reports source
+size, display rotation, correction and source state. Controls:
 
-- Original width × height
-- Display rotation and the pixel-orientation correction
-- Source state (`CAPTURING`, `PAUSED`, `IDLE`, `STOPPED`, `ERROR`, `UNKNOWN`)
-- A `LIVE` / `FROZEN` badge
-- *Freeze* / *Resume* — *Freeze* locks the current frame before annotation; *Resume* returns to
-  live frames. Freezing is also possible from the capture notification (**Freeze current
-  frame**) while you are in another app; the pinned frame is independently owned and newer
-  live frames never replace it.
-- *Process Frame* — processes the pinned frame if there is one, otherwise the latest live
-  frame at the moment of the press. It resizes and prepares the frame only; no recognition
-  exists yet.
-- *Clear* — releases the pinned reference and the processed frame, and cancels any
-  processing that is still in flight so a late result cannot come back.
+- **Freeze / Resume** — pin the current frame for inspection or return to live frames. Freezing
+  is also available from the capture notification and from the floating control while you are
+  in another app; the pinned frame is an independent snapshot that live frames never replace.
+- **Process Frame** — run preprocessing on the pinned frame, or on the latest live frame at the
+  moment of the press. This only prepares pixels and geometry; identification is a separate
+  action in the hero recognition card.
+- **Clear** — release the pinned frame and processed result and cancel any processing in flight.
 
-Nothing is written to disk. Frames live in memory only.
+Frames stay in memory; nothing is written to disk from this screen.
 
-## Annotation Canvas
+## Annotation canvas
 
-The canvas draws the oriented, uncropped frame inside a dark card. The workspace is sized
-from the frame's own aspect ratio, so a portrait capture gets a tall workspace and a landscape
-capture keeps a usable minimum height. The image is never cropped and never stretched.
+The oriented, uncropped frame is drawn inside a dark card. The workspace is sized from the
+frame's aspect ratio with a usable minimum, so the image is never cropped or stretched.
 
-### The interaction model
-
-The rules live in one explicit state machine (`AnnotationInteraction`) so two gestures can
-never compete:
+The gesture rules live in one state machine (`AnnotationInteraction`):
 
 | Interaction | Action |
 |---|---|
 | Short tap on a rectangle | Select that slot |
 | Drag inside a selected rectangle | Move the selected slot |
-| Long press on a rectangle | Open its contextual property editor |
+| Long press on a rectangle | Open its contextual editor |
 | Drag a resize handle | Resize the selected slot |
-| Long press on empty image space, then drag | Draw a new slot |
-| Short tap on empty image space | Nothing |
+| Long press on empty image, then drag | Draw a new slot |
+| Short tap on empty image | Nothing |
 | Tap the X control | Delete the selected slot |
 
-Rules that follow from it:
+Consequences worth knowing: a tap never moves anything; a drag on an unselected rectangle only
+selects it; moving past the touch slop before the timeout cancels a pending long press; and a
+drag on empty space never creates a slot without the long press first. The canvas takes the
+gesture from the first touch, so the page never scrolls during an annotation gesture.
 
-- Only one slot is selected at a time, and the selection is the slot's stable id.
-- A tap never moves anything. A drag on an **unselected** rectangle selects it and stops
-  there, so a drag can never move the wrong slot.
-- A stationary long press is never read as a move, and it opens the property editor
-  immediately when the timeout is reached.
-- Moving past the touch slop **before** the timeout cancels the pending long press: a drag
-  on an unselected rectangle only selects it, a drag on a selected rectangle moves it, and a
-  drag on empty space never turns into slot creation. Once the threshold is reached,
-  movement can neither delay nor cancel the already-open menu.
-- A drag on empty space never creates a rectangle: creating requires the long press first.
-- A rectangle is never created outside the displayed image.
-- The canvas takes the gesture from the first touch, so **the page never scrolls while a
-  slot is being moved, resized or drawn**. The rest of the page scrolls normally.
+The selected rectangle gets three resize handles (top-left, bottom-left, bottom-right) and a
+red X at the top-right corner for deletion. The missing top-right handle does not limit
+resizing: the other corners change both dimensions and the bottom-left changes the width.
 
-### The selection
+Team colours are blue for `ALLY`, red for `ENEMY` and grey for `GLOBAL`, always accompanied by
+a label such as `A-B1` or `E-P2`.
 
-The selected rectangle gets a stronger outline, a translucent fill and three resize handles:
-top-left, bottom-left and bottom-right.
+The **fullscreen editor** fits the image to the screen without zoom or pan, keeps overlays
+aligned, and uses Android Back to leave fullscreen before leaving the tab. Orientation is
+never forced.
 
-The **top-right corner carries exactly one control: the X that deletes the slot.** It sits
-on the corner where the top-right resize handle used to be — there is no handle behind or
-beside it, and nothing floats above the rectangle. The X is drawn in red, so it can never be
-mistaken for a handle, and its touch target is larger than the drawn circle.
+## Contextual editor and clipboard
 
-The missing top-right handle does not limit resizing: the top-left handle changes the width
-*and* the height, the bottom-right handle does the same from the other side, and the
-bottom-left handle changes the width alone.
+A long press opens a compact editor for the selected slot: type (`BAN`/`PICK`), team
+(`ALLY`/`ENEMY`/`GLOBAL`), index and optional label. Invalid changes are refused with the
+reason shown inline and the previous values kept.
 
-### Colours and labels
+- **Copy** puts the slot in the app's own clipboard, not the system clipboard.
+- **Paste** creates a copy of the clipboard slot next to the target slot, which only anchors
+  placement. The copy gets a new id, the next free index and a small offset.
+- **Duplicate** does the same for the slot the editor belongs to.
 
-| Team | Colour |
-|---|---|
-| `ALLY` | blue |
-| `ENEMY` | red |
-| `GLOBAL` | neutral grey |
+The original is always preserved.
 
-Colour is never the only cue: every rectangle carries a readable label such as `A-B1`,
-`E-P2` or `G-B1`, followed by the user's own label when there is one.
+## Manual slots and profiles
 
-## The contextual property editor
+The list under the canvas is the text view of the same annotation set, grouped by team and
+type and keyed by slot id. Tapping a row selects the rectangle and vice versa. **Undo** and
+**Redo** cover creation, deletion and geometry changes; a deleted slot is restored with its own
+id. There is no fixed number of slots.
 
-A long press on a rectangle opens a small editor next to it. The menu appears **as soon as
-the long-press timeout is reached** — the finger does not have to move at all, and a small
-movement afterwards does not delay it either. It never occupies a permanent part of the
-canvas, and it positions itself inside the window, so it is never clipped off-screen in
-either orientation.
+Calibration profiles save normalized rectangles and metadata for matching layouts. Saving,
+updating and applying require a pinned frame, and applying first checks aspect ratio and
+orientation. Corrupt or unsupported documents are never silently emptied; the only recovery is
+**clear all calibration data**.
 
-The menu and the selection always refer to the same slot: opening the menu selects that
-slot first, so the outline, the handles, the delete control and the list highlight all
-agree.
+## Hero recognition
 
-Validation failures are never silent. A type, team or index change that would produce a
-duplicate logical identity is refused with the reason shown next to the controls, the slot
-keeps its previous values, and the editor stays open. Invalid index text is flagged inline
-in the index field.
+This card contains the identification flow added in Sprint 1B.
 
-It edits:
+1. **Sync catalog** downloads public static hero data and reference images on explicit request.
+   The catalog is cached privately for offline browsing.
+2. Select a slot on the canvas, then tap **Identify hero**. The slot crop is extracted upright
+   for the current rotation and rejected if it has too little visual information.
+3. Candidates are shown as **similarity, not a probability**. The matcher is an uncalibrated
+   baseline; a low score is reported honestly as no match.
+4. **Confirm** stores the chosen hero for that slot. **Change…** opens manual correction by
+   name, available from candidates, no-match, insufficient information, failed and confirmed
+   states. **Clear** removes a confirmation.
 
-- Slot type: `BAN` / `PICK`.
-- Team: `ALLY` / `ENEMY` / `GLOBAL`.
-- Index.
-- Optional label.
+Manual confirmation is always required; the app never selects a hero by itself.
 
-And it offers three actions:
+## Processing inspector
 
-- **Copy** — puts the slot into the application's own clipboard. This is deliberately *not*
-  the Android system clipboard: a slot is calibration data that belongs to this app.
-- **Paste** — creates a copy of the **clipboard** slot next to the slot the menu was opened
-  on (or next to the copied slot itself when Paste is invoked without a target). The
-  clipboard slot is always the source: type, team, label and rectangle dimensions are copied
-  from it. The target slot only anchors the placement. The copy gets a **new unique id**, is
-  offset a little from the anchor, stays inside the image and takes the next free index in
-  its `(type, team)` scope so it never collides with an existing logical slot. The index can
-  be changed afterwards.
-- **Duplicate** — the same thing for the slot the editor belongs to.
-
-The original slot is always preserved by a copy, a paste or a duplicate.
-
-## Manual slots
-
-The list under the canvas is the text view of the same annotation set.
-
-Slots are grouped into **ALLY · BAN**, **ENEMY · BAN**, **ALLY · PICK**, **ENEMY · PICK** and
-**GLOBAL**. Every row shows the type, team, index, the user's label and the normalized
-rectangle, and every row is keyed by the slot's own id — the list never relies on positions.
-
-- Tapping a row selects that rectangle on the canvas.
-- Selecting a rectangle on the canvas highlights its row.
-- *Select* and *Delete* act on that exact slot.
-- *Edit geometry* reveals the `left` / `top` / `right` / `bottom` fields for typing exact
-  coordinates.
-
-*Undo* and *Redo* sit above the list. Undo covers a deletion, a creation and a move or
-resize; it restores the correct slot id and metadata. A deletion is undone by putting the
-slot back with its own id, never with a new one.
-
-There is no fixed number of bans or picks: the user creates as many slots as the layout
-needs. The index is always configurable and a duplicate `(type, team, index)` is refused.
-
-## Fullscreen annotation editor
-
-*Fullscreen* opens the image on its own screen, in whichever orientation the device is in.
-The button is a compact icon in the corner of the canvas card.
-
-- The image and the canvas fill the available phone screen, using the maximum width and
-  height, with the aspect ratio preserved.
-- The slot overlays stay perfectly aligned with the image.
-- There is no zoom and no pan: the frame is fitted into the screen, and nothing about the
-  view is adjusted while editing.
-- Only the essential controls are visible: a compact collapse icon in the corner and the
-  dismissible gesture hint.
-- The collapse icon returns to the embedded editor and the previous screen arrangement.
-- Android Back leaves the fullscreen editor first, and only then the Vision Lab.
-- The orientation is never forced.
-
-## What the controls mean
-
-| Control | What it does |
-|---|---|
-| **Freeze** | locks the current frame before annotation (the capture notification carries **Pause**/**Resume** for the same job while in another app; an independently pinned snapshot comes from the floating button or this button) |
-| **Resume** | returns to live frames (also as **Resume live capture** in the notification) |
-| **Slot** | a manually marked region where a ban/pick hero portrait is expected |
-| **Process Frame** | resizes and prepares the frame only; no recognition exists yet |
-| **Calibration profile** | saves and restores normalized slot coordinates for matching screen layouts |
-
-The screen keeps stating **"Detection: not implemented"**.
+Shows source and output dimensions, rotation, crop, scale, duration, status and errors, plus a
+maximum processed dimension setting. Acquisition latency and processing duration are distinct
+from identification time.

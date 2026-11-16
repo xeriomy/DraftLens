@@ -52,9 +52,6 @@ class FramePipeline(
     @Volatile
     private var sessionId: Int = 0
 
-    /** Effective gate state for the structured acquisition log. */
-    fun visibilityState(): String = visibility.currentState().name
-
     /**
      * Bumped every time a new reader/surface generation is created (start/resize).
      * Images captured with an older generation are dropped, so a late callback from a

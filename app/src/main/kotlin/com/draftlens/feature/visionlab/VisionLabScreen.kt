@@ -40,8 +40,8 @@ import com.draftlens.vision.model.VisionFrameSource
 import com.draftlens.vision.preprocessing.AndroidFramePreprocessor
 
 /**
- * Vision Lab: inspect frames, place manual draft-slot annotations, and manage calibration
- * profiles. There is no recognizer in this sprint, so nothing here reports a detection.
+ * Vision Lab: inspect frames, place manual draft-slot annotations, run the identification
+ * baseline, and manage calibration profiles. Identification always needs manual confirmation.
  */
 @Composable
 fun VisionLabScreen(
@@ -89,8 +89,8 @@ fun VisionLabScreen(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("DraftLens — Vision Lab (Sprint 1A)", style = MaterialTheme.typography.titleLarge)
-        Text("Detection: not implemented. Manual slots are calibration data, not detections.")
+        Text("DraftLens — Vision Lab", style = MaterialTheme.typography.titleLarge)
+        Text("Recognition is an uncalibrated baseline. Always confirm or correct the result.")
 
         FramePreviewCard(
             state = state,
@@ -253,9 +253,8 @@ private fun ProcessingInspectorCard(
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Processing Inspector", style = MaterialTheme.typography.titleMedium)
-            Text("Detection: not implemented")
             Text(
-                "Process Frame resizes and prepares the frame only; no recognition exists yet.",
+                "Process Frame prepares pixels for inspection. Identification is a separate action.",
                 style = MaterialTheme.typography.bodySmall,
             )
 

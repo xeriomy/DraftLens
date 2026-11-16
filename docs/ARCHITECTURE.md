@@ -1,64 +1,81 @@
-# Architecture — DraftLens
+# Architecture
 
 ## Stack
-Kotlin 2.0.20 · AGP 8.6.1 · Gradle 8.7 · compileSdk/targetSdk 35 · minSdk 26 · Jetpack Compose (material3) ·
-Coroutines + Flow · DataStore Preferences. Single Gradle module `:app`.
 
-## Package map
-```
+Kotlin 2.0.20 · AGP 8.6.1 · Gradle 8.7 · JDK 17 · compileSdk/targetSdk 35 · minSdk 26 ·
+Jetpack Compose (Material 3) · Coroutines and Flow · DataStore Preferences ·
+kotlinx-serialization. One Gradle module, `:app`. Versions are centralised in
+`gradle/libs.versions.toml`.
+
+## Layout
+
+```text
 com.draftlens
-  app/            MainActivity (tab host), DraftLensApp (DI root, no framework)
-  capture/        CaptureSessionService (foreground), CaptureController, FramePipeline, FrameSampler,
-                  CaptureStateHolder, CaptureVisionFrameSource (capture -> Vision adapter)
-  models/         CaptureSessionState + CaptureTransitions, CapturedFrame
-  permissions/    ProjectionPermission (consent intent factory)
-  datastore/      AppPreferencesRepository (sampling interval),
-                  CalibrationProfileDataStore (one JSON calibration document)
-  detection/      Interfaces only — ScreenCaptureProvider, FrameProcessor, DraftPhaseDetector,
-                  HeroRecognizer, HeroSlotDetector, DetectionValidator (all NotImplemented)
-  vision/
-    model/        FrameId, FrameEnums, FramePayload, VisionFrame, VisionFrameSource (pure Kotlin)
-    model/android/BitmapFramePayload
-    geometry/     NormalizedPoint/Rect, PixelPoint/Rect, FrameTransform (pure Kotlin)
-    preprocessing/PreprocessTypes, PreprocessingMath, PixelArrayFramePreprocessor,
-                  AndroidFramePreprocessor
-    annotation/   DraftSlot, SlotAnnotationStore, SlotAnnotationCodec (pure Kotlin)
-    calibration/  CalibrationProfile, CalibrationCompatibility, CalibrationProfileCodec,
-                  CalibrationRepository (pure Kotlin)
-  feature/home/   HomeViewModel, DebugCaptureScreen (tab 0)
-  feature/visionlab/ VisionLabViewModel, VisionLabScreen, AnnotationCanvas, SlotEditor,
-                  ProfileControls (tab 1)
+  MainActivity            two-tab host; DraftLensApp holds process-scoped dependencies
+  capture/                foreground service, controller, pipeline, sampler, freeze, visibility,
+                          generations, plane copy, diagnostics, the capture->Vision adapter
+  models/                 capture session state and transitions, captured frame, snapshots
+  datastore/              preferences, calibration document, hero confirmations
+  permissions/            projection consent intent factory
+  overlay/                floating control view, controller, enablement, position math
+  vision/model/           ids, enums, payloads, frames, VisionFrameSource
+  vision/model/android/   BitmapFramePayload
+  vision/geometry/        normalized and pixel value types, FrameTransform
+  vision/preprocessing/   plan/result, pure math, renderers, diagnostics
+  vision/annotation/      slots, store, codecs, validator
+  vision/calibration/     profiles, compatibility, codec, repository
+  vision/heroes/          catalog, transport, cache, extraction, visual gate, matcher
+  feature/home/           capture debug screen and ViewModel
+  feature/visionlab/      Vision Lab ViewModel, screens, canvas and panels
 ```
-Room and a separate Gradle module are **not** created — Sprint 1A has no independent feature
-module, so empty scaffolding is omitted.
 
-## State machine
-`IDLE → AWAITING_PERMISSION → STARTING → CAPTURING ⇄ PAUSED → STOPPING → IDLE`, any → `ERROR → IDLE`.
-`CaptureTransitions.canTransition()` is the single authority. UI and service both speak
-`CaptureSessionState`; the service is the source of truth, the ViewModel mirrors actions.
+`vision/**` is pure Kotlin except the explicitly Android-named adapters. This is what makes
+geometry, codecs, policy and matching unit-testable without an emulator.
+
+## State and ownership
+
+The capture state machine is
+`IDLE → AWAITING_PERMISSION → STARTING → CAPTURING ⇄ PAUSED → STOPPING → IDLE`, with any state
+able to enter `ERROR → IDLE`. The service owns the projection and publishes state; the
+ViewModel mirrors it. `CaptureStateHolder` is process-local by design: process death clears it
+because MediaProjection tokens cannot survive.
+
+Publication is gated by three independent conditions: the session is capturing, no frame is
+pinned, and the captured window is visible (where the platform reports visibility). Freeze,
+pause and hide all stop conversion without tearing down the projection.
 
 ## Data flow
-MediaProjection → VirtualDisplay → ImageReader(maxImages=3) → HandlerThread("draftlens-capture")
-→ FrameSampler(monotonic elapsed time, ≥interval) → Bitmap (latest-only, stale ref cleared on stop/reset) → `StateFlow<CapturedFrame>`
-→ ViewModel → Compose preview. Main thread never decodes pixels; UI stays responsive.
 
-## Vision boundary
-Vision consumes frames through `VisionFrameSource` only. It never imports `CaptureSessionService`
-or `CaptureStateHolder`; `capture/CaptureVisionFrameSource.kt` is the single adapter between the
-two, mapping `CaptureStatus` to `VisionSourceState` and `CapturedFrame` to `OriginalFrame`.
+```text
+MediaProjection → VirtualDisplay → ImageReader (maxImages 3)
+  → RgbaPlaneCopy → Bitmap (latest only, generation-checked)
+  → CaptureStateHolder → CaptureVisionFrameSource → VisionLabViewModel
+  → Compose preview / annotation canvas
+  → explicit Process Frame → Dispatchers.Default → ProcessedFrame
+  → select slot → extract → visual gate → match → confirm → store
+```
 
-Processing is explicit: the user presses *Process Frame*, one job runs on `Dispatchers.Default`,
-a generation counter discards stale results, and failures are reported instead of published as
-partial frames. There is no recognizer, so nothing reports a detection. See
-`docs/VISION_ARCHITECTURE.md`.
+The reader runs on a dedicated `HandlerThread`; the main thread never decodes pixels. Stale
+callbacks from replaced reader generations are dropped at the listener and again before
+publication. A resize replaces the ImageReader and VirtualDisplay at the reported size; a pure
+rotation change only updates metadata.
 
-## Key decisions
-- Latest-frame-only slot because stale frames are worthless for draft detection.
-- Service foregrounds before `getMediaProjection()`.
-- Consent re-requested and token used once per session—never cached.
-- Capture dimensions prefer `maximumWindowMetrics` on API 30+; legacy fallback is retained below that.
-- Bitmaps are never recycled while Compose may still render them; stopping/resetting clears the state reference.
-- Self-capture: no `FLAG_SECURE`; users see system scope options to choose “Entire screen” (debug UI included) or “A single app”.
-- MediaProjection buffers are display-oriented, so production frames keep `rotation = ROTATION_0` and only record `displayRotation`.
-- Calibration profiles store normalized rectangles and metadata only — never pixels or screenshots.
-- No network code. Data-source audit is documentation-only (`docs/DATA_SOURCES.md`).
+## Boundaries
+
+- **Capture ↔ Vision:** `VisionFrameSource` is the only seam. `CaptureVisionFrameSource` is the
+  single file that imports both packages.
+- **Pure ↔ Android:** geometry, codecs, policy and matching have no Android imports; platform
+  adapters are thin and named.
+- **Frames ↔ disk:** captured pixels and slot crops never leave memory. Only metadata,
+  calibration profiles and public catalog assets are persisted.
+
+## Build and verification
+
+Gradle tasks in CI (`.github/workflows/build.yml`): `test`, `assembleAndroidTest` (compile
+only), `lint` with `abortOnError = true`, `assembleDebug`, APK upload and manifest inspection.
+`main` is protected by the build check. CI is the build of record because the authoring host is
+aarch64 and the SDK's `aapt2` is x86_64-only.
+
+See [Screen capture](SCREEN_CAPTURE.md) for the platform lifecycle,
+[Vision architecture](VISION_ARCHITECTURE.md) for the processing pipeline, and
+[Physical-device checklist](TESTING_PHYSICAL_DEVICE.md) for what CI cannot prove.

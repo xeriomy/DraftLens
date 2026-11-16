@@ -10,7 +10,6 @@ import com.draftlens.vision.heroes.HeroMatchResult
 import com.draftlens.vision.heroes.HeroMatcher
 import com.draftlens.vision.heroes.HeroReference
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 

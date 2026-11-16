@@ -1,7 +1,6 @@
 package com.draftlens.feature.visionlab
 
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import com.draftlens.vision.annotation.DraftSlot
 import com.draftlens.vision.annotation.SlotTeam

@@ -29,9 +29,7 @@ data class VisualInformationReport(
     val meaningfulDifferences: Int,
     /** Null when the crop is usable; otherwise a short reason it is not. */
     val insufficientReason: String?,
-) {
-    val isSufficient: Boolean get() = insufficientReason == null
-}
+)
 
 object VisualInformationAnalyzer {
 

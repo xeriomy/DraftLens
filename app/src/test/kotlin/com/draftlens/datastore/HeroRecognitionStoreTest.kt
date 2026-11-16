@@ -2,7 +2,6 @@ package com.draftlens.datastore
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.preferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
