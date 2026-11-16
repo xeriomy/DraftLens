@@ -27,8 +27,7 @@ enum class AnnotationWorkspaceMode {
 
     /**
      * The workspace fills the space it is given and the image is fitted inside it.
-     * Used by the fullscreen editor, where the image should be as large as possible and
-     * the user can zoom and pan.
+     * Used by the fullscreen editor, where the image should be as large as possible.
      */
     Fill,
 }

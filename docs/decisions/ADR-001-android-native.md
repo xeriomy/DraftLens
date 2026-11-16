@@ -1,29 +1,39 @@
-# ADR-001 — Native Android (Kotlin + Compose), single module for Sprint 0
+# ADR-001 — Native Android, single module
 
-**Status:** Accepted (Sprint 0).
+**Status:** Accepted. Confirmed by Sprints 1A, 1B and 1C.
 
 ## Context
-DraftLens needs continuous screen capture (MediaProjection), a foreground service, and later a
-floating overlay — all Android-platform capabilities. The brief explicitly requires native.
+
+DraftLens needs continuous screen capture through MediaProjection, a typed foreground
+service, a persistent notification, and a `TYPE_APPLICATION_OVERLAY` control. These are
+Android platform APIs. It also needs image handling, local persistence and a small amount
+of deterministic matching. The team is one maintainer shipping increments in public.
 
 ## Decision
-- Native Kotlin + Jetpack Compose, MVVM, Coroutines/Flow. Not Flutter/KMP: MediaProjection and
-  foreground-service-type APIs are Android-only and need no cross-platform abstraction today.
-- **Single Gradle module** (`:app`). The brief's logical packages exist as Kotlin packages,
-  not modules. Rationale: at Sprint 0 scale, module boundaries cost build time and config
-  surface without buying test/deploy independence.
-- Version pins: Kotlin 2.0.20, AGP 8.5.2, Gradle 8.7, compile/target 35, min 26, JDK 17 —
-  the newest stable line that a stock `ubuntu-latest` GitHub runner supports with zero
-  toolchain workarounds.
 
-## Split trigger
-Split into modules (`:core`, `:feature-*`, …) when the first feature needs to (a) be tested
-independently of the capture service, (b) deploy/ship separately, or (c) be reused by a second
-app. The `capture/`, `detection/`, `database/`, `datastore/` packages are already seam-shaped
-to make that move mechanical.
+Build a native Android app in Kotlin with Jetpack Compose (Material 3), Coroutines and Flow,
+and DataStore Preferences. Keep a single Gradle module, `:app`, with logical layers expressed
+as Kotlin packages.
+
+The build pins JDK 17, Gradle 8.7, AGP 8.6.1, Kotlin 2.0.20, compileSdk and targetSdk 35,
+minSdk 26. Versions live in `gradle/libs.versions.toml`. CI uses GitHub Actions on
+ubuntu-latest and is the build of record because the authoring host is aarch64 while the
+Android SDK's `aapt2` is x86_64-only.
+
+## Reasons
+
+- MediaProjection, foreground-service types and overlays have no useful cross-platform
+  abstraction here; Flutter or KMP would add a bridge without removing platform work.
+- One module keeps the build and CI short while the feature scope is still one app. A second
+  module becomes justified when a feature needs an independent test or release cycle.
+- Pure Kotlin packages for geometry, codecs, policy and matching keep the risky logic
+  unit-testable on the JVM without an emulator.
 
 ## Consequences
-- `DataStore` is used for preferences now; `Room` is deferred until the first persisted entity
-  to avoid an empty database and dead code.
-- All detection interfaces return explicit `NotImplemented`; adding a real model later means
-  writing *one* new implementation per interface, not restructuring.
+
+- Android lifecycle and permission behaviour must be handled directly, including consent,
+  notification permission and the overlay permission requested only when the user opts in.
+- Verification splits in two: CI proves compilation, pure logic and lint; a physical device
+  is still required for the MediaProjection and overlay rows in the testing checklist.
+- A future split into modules should start with the pure vision/recognition layer, since it
+  already has no Android dependencies at its core.

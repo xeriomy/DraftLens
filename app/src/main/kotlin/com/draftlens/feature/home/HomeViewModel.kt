@@ -41,7 +41,6 @@ class HomeViewModel(
 
     fun onPermissionGranted() {
         _permissionStatus.value = "Granted (session-scoped)"
-        viewModelScope.launch { preferences.recordCaptureStarted() }
     }
 
     fun onPermissionDenied() {

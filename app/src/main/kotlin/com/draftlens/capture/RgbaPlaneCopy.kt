@@ -20,9 +20,6 @@ import java.nio.ByteOrder
  */
 internal object RgbaPlaneCopy {
 
-    /** RGBA_8888 stores 4 bytes per pixel. */
-    const val RGBA_PIXEL_BYTES = 4
-
     /** A validated plane layout, used for the conversion and for structured logs. */
     data class PlaneLayout(
         val imageWidth: Int,
@@ -35,8 +32,6 @@ internal object RgbaPlaneCopy {
         val cropWidth: Int,
         val cropHeight: Int,
     ) {
-        val rowPaddingPixels: Int get() = rowPaddingBytes / pixelStride
-
         /** True when the crop covers the whole image. */
         val isFullCrop: Boolean
             get() = cropLeft == 0 && cropTop == 0 &&

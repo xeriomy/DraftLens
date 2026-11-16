@@ -39,7 +39,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.draftlens.capture.CaptureController
 import com.draftlens.datastore.AppPreferencesRepository
-import com.draftlens.models.CaptureStatus
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings

@@ -1,59 +1,34 @@
-# Sprint 1C — App-Only Capture & Circular Floating Control (Design)
+# Sprint 1C app-only capture design (archived)
 
-**Date:** 2026-11-16 · **Branch:** `sprint-1c-app-only-capture` (stacked on `sprint-1b-hero-recognition`, PR #3) · **Spec:** maintainer Sprint 1C brief (in task tracker)
+**Status:** implemented and merged as PR #4. Current behaviour is documented in
+[Screen capture](../../SCREEN_CAPTURE.md).
 
 ## Intent
 
-Let the user freeze/resume the live MLBB capture without leaving the game. One small
-circular overlay button; the notification remains only a Stop affordance; no recommendation
-UI of any kind.
+Let the user freeze and resume the live MLBB capture without leaving the game. One small
+circular overlay button; the notification keeps Stop and a single state action; no
+recommendation UI of any kind.
 
 ## Key decisions
 
-1. **Capture chooser is never forced.** `createScreenCaptureIntent()` is unchanged. The
-   debug screen guides the user to pick *Single app / app window → Mobile Legends*
-   (Android 14+ partial capture). The full-display path stays supported and documented as
-   the fallback, with no promise of notification-free frames. The old guidance text that
-   told users to choose Entire screen is corrected.
-2. **Visibility is a gate, not a frame source.** API 34+
-   `MediaProjection.Callback.onCapturedContentVisibilityChanged()` is overridden. While the
-   selected window is hidden, images are acquired and closed but never converted or
-   published; the last valid published frame is preserved untouched. While visible, live
-   publication resumes automatically *unless a frame is pinned* (user intent = FROZEN).
-   A resume requested while hidden is safely remembered: it flips the intent LIVE, clears
-   the pin, and frames flow again when visibility returns — publication while hidden stays
-   gated regardless of the pin state.
-3. **Freeze semantics are unchanged.** `CaptureFreeze` + `FrameSnapshots` keep their
-   contracts (independently owned copy, projection stays running, idempotent). The overlay
-   button tap runs the same `freezeCurrentFrame()` / `resumeLive()` calls as everything else.
-4. **The floating control is a button, not a panel.** One 48–56dp circular `WindowManager`
-   view with `TYPE_APPLICATION_OVERLAY`, attached by `CaptureSessionService` (the existing
-   foreground mediaProjection service, so it is alive exactly while capture is running).
-   `SYSTEM_ALERT_WINDOW` is requested (ACTION_MANAGE_OVERLAY_PERMISSION) only when the user
-   taps **Enable floating control**; denied → capture + in-app Freeze/Resume unaffected,
-   explanation shown; the enable is retried on enable tap or re-request, never forced.
-5. **Overlay drives off pure Kotlin seams.** Position storage/snapping/clamping and the
-   visibility/publication gate are pure classes with JVM unit tests. The `WindowManager`
-   shell stays thin (attach/detach/touch). No DataStore on the hot path; position persists
-   as normalized coordinates on drag end.
-6. **Overlay is attached only during capture sessions** and always removed on stop,
-   terminate, revocation and resize-failure teardown paths. Rotation re-derives pixel
-   position from the normalized coordinates.
-7. **No masking of capture content.** The overlay sets no flags to hide itself from capture;
-   whether it appears in single-app vs full-display captures is a physical-device finding,
-   documented honestly, never "proven" by JVM tests.
-8. **Stacked delivery.** PR base = `sprint-1b-hero-recognition`; 1B history untouched; no
-   merge; physical-device acceptance is maintainer-run and marked NOT RUN.
+- **Pure visibility policy.** `CaptureVisibilityPolicy` decides whether a captured window is
+  visible enough to publish. It is JVM-tested and has no Android dependencies.
+- **Publication gate only.** Visibility blocks conversion and publication in `FramePipeline`;
+  images continue to be acquired and closed so the reader stays healthy. The overlay's own
+  window, rendering and touch handling are independent of capture visibility.
+- **One shared state.** `CapturePublishState` derives LIVE, PAUSED and FROZEN from the pinned
+  frame and session state. The overlay glyph, the overlay tap and the notification action all
+  use it, so they cannot disagree.
+- **Opt-in overlay.** `SYSTEM_ALERT_WINDOW` is declared but requested only when the user
+  enables the control. Denial does not affect capture or in-app freeze/resume.
+- **Normalized position.** The button stores a normalized position with edge snapping and
+  re-anchors on rotation.
+- **No masking or automation.** The app never reads game memory, injects touches or masks the
+  capture region. On API levels below 34 there is no visibility signal and whole-display
+  semantics apply.
 
-## Non-goals
+## Verification boundary
 
-Everything in the spec §10: no draft/phase detection, no slot detection, no recognition
-models, no scoring, no recommendation overlays, no game interaction, no accessibility service.
-
-## Verification
-
-CI (GitHub Actions) is the build of record (host has no Android toolchain): `test`,
-`lint`, `assembleAndroidTest`, `assembleDebug` + APK artifact. Instrumentation tests are
-compiled, not executed (no KVM emulator). The physical-device matrix for overlay and
-single-app capture is written into `docs/TESTING_PHYSICAL_DEVICE.md` and the sprint doc,
-marked NOT RUN.
+CI proves compilation, pure policy and position math, and lint. Overlay behaviour across OEMs
+and single-app capture on a real device remain hardware findings recorded in the
+[physical-device checklist](../../TESTING_PHYSICAL_DEVICE.md).

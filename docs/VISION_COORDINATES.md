@@ -1,139 +1,82 @@
-# Vision Coordinates
+# Vision coordinates
 
-## Normalized coordinates
+This document defines the coordinate spaces used by capture, preprocessing, annotation and
+recognition. The rules are implemented in `com.draftlens.vision.geometry` and are pure Kotlin
+so they can be tested on the JVM.
 
-All annotation geometry is stored in **normalized source coordinates**:
+## Spaces
 
-- `x` runs left to right, `y` runs top to bottom, both in `[0.0, 1.0]`.
-- The axes are the source image's axes **as captured** — before any rotation, crop or scale.
-- They are not display dp, not density-scaled, and not affected by a crop origin.
+| Space | Type | Units | Origin |
+|---|---|---|---|
+| Source | `NormalizedRect`, `NormalizedPoint` | `0..1` per axis, as captured | top-left of the captured pixels |
+| Source pixels | `PixelPoint`, `PixelRect` | integer pixels | top-left of the captured pixels |
+| Oriented pixels | `FloatPoint` | continuous pixels | top-left after rotation correction |
+| Crop pixels | `FloatPoint` | continuous pixels | top-left of the crop rectangle |
+| Processed pixels | `PixelRect` | integer pixels | top-left of the processed output |
 
-`NormalizedRect(left, top, right, bottom)` is valid only when every value is finite,
-`left < right`, `top < bottom`, and all four are inside `[0, 1]`. An empty rectangle is not
-storable.
+Normalized values are not display dp, are not density-scaled, and do not change when a crop
+is applied. A `NormalizedRect` is valid only when every value is finite, `left < right`,
+`top < bottom`, and all four values are inside `[0, 1]`. A `PixelRect` has exclusive right and
+bottom edges, so it always keeps at least one pixel between opposite edges.
 
-`PixelRect(left, top, right, bottom)` uses integer pixels with **exclusive** right and bottom
-edges, so at least one pixel always remains between opposite edges.
-
-Conversions:
+Conversions round outward so the pixel rectangle covers the requested area:
 
 ```kotlin
-fun NormalizedRect.toPixelRect(width: Int, height: Int): PixelRect   // rounds outward
+fun NormalizedRect.toPixelRect(width: Int, height: Int): PixelRect
 fun PixelRect.toNormalized(width: Int, height: Int): NormalizedRect
 ```
 
-Rounding outward means the pixel rectangle always covers the requested area.
+`OrientationCategory.from(width, height)` returns `LANDSCAPE`, `PORTRAIT` or `SQUARE`; square
+is its own category.
 
-## Orientation categories
-
-`OrientationCategory.from(width, height)` returns `LANDSCAPE` when `width > height`,
-`PORTRAIT` when `height > width`, and `SQUARE` when they are equal. Square is a category of
-its own rather than being squeezed into portrait or landscape.
-
-## Two rotations
+## Two different rotations
 
 | Field | Meaning | Effect on pixels |
 |---|---|---|
-| `displayRotation` | device display rotation at acquisition | none — it is a record |
-| `rotation` | pixel-orientation correction | the transform is applied |
+| `displayRotation` | device rotation at acquisition | none — a record only |
+| `rotation` | pixel-orientation correction | applied by the transform |
 
-MediaProjection buffers are already display-oriented, so production frames set
-`rotation = ROTATION_0`. A non-zero `rotation` appears only in synthetic fixtures or in an
-authorized import that genuinely needs straightening.
+MediaProjection buffers are already display-oriented, so production frames carry
+`rotation = ROTATION_0`. Non-zero corrections exist for synthetic fixtures and for imports
+that genuinely need straightening.
 
-Source-to-oriented mappings, applied to a continuous source point `(x, y)`:
+Source-to-oriented mappings for a continuous point `(x, y)` in a `W × H` image:
 
-| Rotation | Oriented size | Source point → oriented point |
+| Rotation | Oriented size | Oriented point |
 |---|---|---|
 | `ROTATION_0` | `W × H` | `(x, y)` |
 | `ROTATION_90` | `H × W` | `(H - y, x)` |
 | `ROTATION_180` | `W × H` | `(W - x, H - y)` |
 | `ROTATION_270` | `H × W` | `(y, W - x)` |
 
-`ROTATION_90` and `ROTATION_270` swap the axes; `ROTATION_180` preserves them.
+The 90° and 270° cases swap axes; 180° does not.
 
-## Pipeline order
-
-```text
-validate -> normalize orientation -> optional crop on the oriented image -> resize without distortion
-```
-
-The crop rectangle is a normalized rectangle in **oriented** coordinates. The crop is applied
-after the orientation correction and before the resize.
-
-## FrameTransform
-
-`FrameTransform` is the record of one preprocessing run:
-
-| Field | Meaning |
-|---|---|
-| `sourceWidth`, `sourceHeight` | captured size |
-| `rotation` | the correction that was applied |
-| `crop` | the oriented crop, or the full oriented frame when nothing was cropped |
-| `orientedWidth`, `orientedHeight` | size after the correction |
-| `cropPixelRect` | the integer pixel rectangle of the crop inside the oriented image |
-| `scale` | processed pixels per crop pixel, horizontally |
-| `processedWidth`, `processedHeight` | the output size |
-
-`FrameTransform.create(sourceWidth, sourceHeight, rotation, crop, processedWidth, processedHeight)`
-validates positive dimensions and requires the output to preserve the oriented crop's aspect
-ratio within one pixel of width or height.
-
-The mapping chain is continuous (floating point) and reversible:
+## Processing order
 
 ```text
-source pixels -> oriented pixels -> crop pixels -> processed pixels
+validate → orient → crop in oriented space → resize without distortion
 ```
 
-Round trips hold up to floating-point error for the continuous mappings; the public integer
-conversions round outward and stay within one pixel. A downscale discards detail that cannot
-be recovered by scaling back up.
+The crop stored in `FrameTransform` is normalized in **oriented** coordinates; a null crop
+means the full oriented frame. The output aspect ratio must match the integer crop rectangle
+within one pixel of width or height.
 
-## How the canvas uses this
+`FrameTransform` records the source size, correction, crop, oriented size, integer crop
+rectangle, scale and output size. Its continuous mapping chain is
+`source → oriented → crop → processed` and is reversible up to floating-point error; the
+integer conversions round outward and stay within one pixel. Downscaling discards detail, so
+scaling back up cannot recover it.
 
-The Vision Lab canvas draws the **oriented, uncropped** frame. Crop belongs to processing and
-inspection, not to the annotation viewport.
+## Canvas and preview
 
-Because slot rectangles live in source-normalized coordinates while the canvas shows oriented
-pixels, the canvas builds the identity transform
+The Vision Lab shows the **oriented, uncropped** frame. Cropping belongs to processing and
+inspection, not to the annotation viewport. The canvas builds an identity-crop transform
+from the frame's oriented size and maps both pointer positions and slot rectangles through
+it, so overlays stay aligned in portrait, landscape and square without screen-dp guessing.
 
-```kotlin
-FrameTransform.create(
-    sourceWidth = frame.sourceWidth,
-    sourceHeight = frame.sourceHeight,
-    rotation = frame.rotation,
-    crop = null,
-    processedWidth = orientedWidth,
-    processedHeight = orientedHeight,
-)
-```
-
-and maps every pointer position and every rectangle through it. The overlay therefore stays
-aligned with the preview for portrait, landscape and square frames, and for any
-`rotation` — no screen-dp guessing is involved.
-
-The preview box itself fits the frame with `ContentScale.Fit`; the fitted rectangle is
-computed from the canvas size and the oriented aspect ratio, and all drawing and hit testing
-use that rectangle.
-
-## How the bitmap and the overlay share one rectangle
-
-The captured bitmap's pixel size is **not** a canvas size. `OrientedBitmapLayout` computes
-where the bitmap is actually drawn:
-
-- The oriented dimensions are `sourceWidth × sourceHeight`, or the swapped pair for 90° and
-  270°.
-- One uniform scale maps the oriented size into the fitted rectangle, so the image is never
-  stretched.
-- The bitmap is drawn centred on `fitted.center` at that scale, and the rotation is applied
-  around the same centre.
-- The axis-aligned bounds of the rotated bitmap are exactly the fitted rectangle.
-
-Because the overlay is mapped into the same fitted rectangle, the annotation of the whole
-frame (`0,0 → 1,1`) lands exactly on the rendered bitmap bounds, for every rotation. The
-same renderer draws the preview card and the annotation canvas.
-
-The workspace itself is sized from the oriented aspect ratio, so a portrait capture gets a
-tall workspace and a landscape capture keeps a usable minimum height. The image is never
-cropped and never stretched; a workspace taller than the image's aspect simply leaves
-letterbox bands, and a touch on a band is not on the image.
+`OrientedBitmapLayout` computes where the bitmap is really drawn: one uniform scale maps the
+oriented size into the fitted rectangle, the bitmap is centred there, and rotation is applied
+around the same centre. The rotated bitmap's axis-aligned bounds equal the fitted rectangle,
+so a slot covering `0,0 → 1,1` lands exactly on the rendered image. The workspace height
+comes from the oriented aspect ratio with a usable minimum; touches on letterbox bands are
+not touches on the image.

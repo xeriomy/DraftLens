@@ -1,100 +1,100 @@
-# DraftLens — Sprint 1A Vision Foundation
+# DraftLens
 
-Native Android app that assists MLBB Draft Mode players. Sprint 1A turns the previously
-working capture path into a real **image-bearing** foundation: frames carry pixels, geometry
-is tested, preprocessing validates before it renders, and a Vision Lab lets you place manual
-slot annotations and save calibration profiles.
+DraftLens is a native Android app for players of Mobile Legends: Bang Bang draft mode. It
+captures the game screen, lets you mark the ban/pick portrait slots by hand, freezes the
+game frame without leaving the match, and runs a small on-device hero-identification
+baseline that always asks you to confirm or correct the result. It is a calibration and
+inspection tool, not an automatic draft advisor.
 
-**Maintainer-reported device smoke:** the Sprint 0 capture path and the Sprint 1A Vision
-Lab interaction behavior were used on a physical Android device and confirmed working.
-Device details, the exact build and test dates were not supplied, and the MediaProjection
-lifecycle matrix remains **NOT RUN**. See [docs/TESTING_PHYSICAL_DEVICE.md](docs/TESTING_PHYSICAL_DEVICE.md)
-and [docs/VISION_TESTING.md](docs/VISION_TESTING.md).
+Current code is the merge of three increments: **1A** (image-bearing frame and Vision Lab
+foundation), **1B** (hero catalog, slot extraction, recognition v0) and **1C** (app-only
+capture, visibility gating and the circular floating freeze control). The status of each,
+including what has not been verified on hardware, is recorded in
+[docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md).
 
-## What works in Sprint 1A
-- MediaProjection consent flow (`ActivityResultContracts.CreateScreenCaptureIntent`)
-- Foreground service (`mediaProjection` type) with persistent notification + Stop action
-- Frame acquisition at 2 FPS default, configurable 334–2000 ms (hard cap 3 FPS)
-- Live frame preview in the debug screen, frame count / resolution / latency / timestamp
-- Pause / resume, rotation & resize handling, clean resource teardown on stop/revoke
-- Non-null frame contract: `FramePayload`, `OriginalFrame`, `ProcessedFrame`, `SlotImage`
-- Rotation-aware geometry with round-trip tests (`FrameTransform`)
-- Validated preprocessing with honest failure codes (`PreprocessingMath`,
-  `PixelArrayFramePreprocessor`, `AndroidFramePreprocessor`)
-- Manual slot annotations with stable ids, bounds/duplicate/overlap validation and a strict
-  JSON codec
+## What it can do
+
+**Capture**
+- MediaProjection consent flow; a typed foreground service owns the projection and the
+  notification.
+- Frames at 2 FPS by default, configurable 334–2000 ms (hard cap 3 FPS).
+- Pause and resume, rotation and resize handling, explicit teardown on stop or revocation.
+- Freeze from the notification or from one floating button; a pinned frame survives pause,
+  resize and visibility changes inside the session.
+- App-only capture on Android 14+: when the captured window is hidden, images are still
+  acquired and closed but never published, so the last valid game frame is kept.
+- One 52 dp overlay button, attached only while capture runs, with edge snapping and a
+  normalized position saved in DataStore. It is opt-in and never touches the game.
+
+**Vision Lab**
+- Non-null frame contract with separate original, processed and slot images.
+- Rotation-aware geometry and validated preprocessing with explicit failure codes.
+- Manual slot annotation with stable ids, bounds/duplicate/overlap checks, undo/redo,
+  copy/paste/duplicate and a strict JSON codec.
 - Versioned calibration profiles: 1 % aspect-ratio tolerance, exact orientation match,
-  unsupported-schema refusal, delete-as-escape-hatch
-- Vision Lab tab: frame preview, freeze/resume, explicit processing, interactive annotation
-  canvas, text slot editor, profile controls
-- Hero recognition v0 (Sprint 1B, PR #3): hero catalog sync from public static data,
-  explicit Identify action for the selected slot, ranked candidates with similarity scores,
-  manual confirm/correct — **accuracy on real game screens is not measured yet**
-- Capture notification with **Stop** and **Pause** (Sprint 1C): pausing keeps the latest
-  valid frame, blocks new frames replacing it, keeps MediaProjection running, and the same
-  Resume action recovers from pause or from a pinned frame; the notification reflects
-  LIVE / PAUSED / FROZEN and never shows both actions
-- App-only capture guidance (Sprint 1C): prefer **Single app / app window → Mobile Legends**
-  (Android 14+ chooser); the captured window's visibility drives publication —
-  MLBB hidden ⇒ the last valid game frame is kept, never DraftLens/shade/system UI;
-  full-display capture remains the documented fallback (it may include the shade/system UI)
-- Circular floating freeze button (Sprint 1C): one 52dp circular `TYPE_APPLICATION_OVERLAY`
-  button shown only while capture runs — tap toggles LIVE (green) / orange (paused or frozen),
-  long-press-and-drag moves it, it snaps to a screen edge, position persists normalized in
-  DataStore; notifications/in-app Freeze/Resume keep working without it; the overlay
-  permission is requested only when you enable the button
+  refusal of unsupported schemas, and a delete-all escape hatch.
 
-## What is deliberately NOT here (later milestones)
-Recommendation engine, counter/synergy/role scoring — and no recommendation overlays
-(Sprint 1C ships exactly one capture-freeze overlay button, and nothing else).
-ML hero recognition is Sprint 1B (PR #3). API sync, player profiling, builds.
-The Vision Lab says **"Detection: not implemented"** — manual slots are calibration data,
-never detections. See `tasks/plan.md` and `docs/ARCHITECTURE.md`.
+**Recognition v0**
+- Public static hero catalog from Rone Arena, cross-checked against MLBBDex, synced only
+  when you ask, cached privately on the device.
+- Upright slot crops for every rotation, then a dHash plus 3×3 mean-RGB similarity.
+- Blank or detail-free crops are rejected; low similarity is reported as no match.
+- Candidates are labelled as uncalibrated similarity, never probability. You always
+  confirm or correct manually. Accuracy on real MLBB screens has not been measured.
 
-## Build
-Requires JDK 17 and Android SDK platform 35, build-tools 35.
+**Deliberately not included:** recommendation, counter/synergy/role scoring, automatic
+draft-phase detection, game-memory reading, injected touches, cloud recognition, ML models,
+OpenCV, and any overlay beyond the single capture-freeze button. Captured pixels never
+leave the device and are never written to disk.
+
+## Build and verify
+
+JDK 17 and Android SDK platform 35 with build-tools 35 are required.
+
 ```sh
-./gradlew test            # JVM unit tests
-./gradlew lint            # Android lint
-./gradlew assembleDebug   # produces app/build/outputs/apk/debug/*.apk
+./gradlew test               # JVM unit tests
+./gradlew lint               # strict lint (abortOnError = true)
+./gradlew assembleAndroidTest # compile instrumented tests
+./gradlew assembleDebug      # debug APK
 ```
-GitHub Actions (`.github/workflows/build.yml`) runs exactly those steps on push/PR and uploads
-the APK artifact. **This authoring environment is aarch64 and the SDK's aapt2/build-tools are
-x86_64-only, so nothing that touches resources can be assembled locally — the CI run is the
-build of record.** See `docs/VISION_TESTING.md` for exactly what ran.
+
+GitHub Actions (`.github/workflows/build.yml`) runs these on every push and pull request and
+uploads the `draftlens-debug` APK. CI is the build of record: the authoring host is aarch64
+while the SDK's `aapt2` is x86_64-only, so resource-touching tasks cannot run locally here.
 
 ## Run
-1. Install the APK from the `draftlens-debug` CI artifact on a physical device (the emulator
-   validates compilation, not MediaProjection reliability).
-2. Open the app; the **Debug Capture** tab is first.
-3. Tap **Start Capture** → grant the system screen-capture consent dialog. When Android asks
-   what to capture, prefer **Single app / app window → Mobile Legends: Bang Bang** (Android 14+);
-   if that option is missing, choose **Entire screen / full device display** (it can capture the
-   shade and system UI).
-4. Open Mobile Legends and wait for the draft screen you want to annotate.
-5. With MLBB on screen, tap the circular **Floating freeze button** (enable it on the capture
-   screen first) to freeze the frame — or, if you never granted the overlay permission, pull
-   down the notification shade and tap **Pause** (notifications must be enabled).
-6. Switch back to **DraftLens → Vision Lab**. Capture kept running; the Vision Lab shows the
-   pinned MLBB frame instead of the DraftLens screen.
-7. Draw a slot rectangle, then run **Identify hero** on the frozen frame. Candidates are
-   similarity scores, not probabilities — confirm or correct manually (the manual search is
-   available in every recognition state).
-8. Tap **Resume live capture** in the notification, or **Resume** in the Vision Lab, to show
-   live frames again. No second capture session is created.
-9. Press **Process Frame** to run the preprocessing engine on the selected frame.
-10. Save the annotations as a calibration profile; apply it later on a matching frame.
-11. **Stop Capture**, or the notification's **Stop**, or revoke consent in Settings to
-    exercise teardown.
 
-## Docs
-- `docs/ARCHITECTURE.md` — module layout, state machine, data flow, Vision boundary
-- `docs/VISION_ARCHITECTURE.md` — Vision packages, ownership, processing rules
-- `docs/VISION_FRAME_CONTRACT.md` — payload contract, ownership, original/processed/slot frames
-- `docs/VISION_COORDINATES.md` — normalized coordinates, rotation tables, crop semantics
-- `docs/VISION_LAB.md` — user-facing controls, freeze behavior, slot editing, profile rules
-- `docs/VISION_TESTING.md` — test inventory, CI gates, what was and was not run
-- `docs/SCREEN_CAPTURE.md` — MediaProjection lifecycle, Android 14+ rules, limits
-- `docs/DATA_SOURCES.md` — Rone Arena vs MLBBDex audit (verified live 2026-11-04)
-- `docs/decisions/ADR-001-android-native.md` — why native, single-module, and version pins
-- `docs/IMPLEMENTATION_REPORT.md` — executed verification, limitations, next tasks
+1. Install the `draftlens-debug` APK from CI on a physical device.
+2. Open **Debug Capture**, enable notifications, and optionally enable the floating control
+   (this is the only time the overlay permission is requested).
+3. Tap **Start Capture**. When Android asks what to share, prefer **Single app → Mobile
+   Legends**; choose the whole display only as a fallback, since it can include the shade.
+4. In MLBB, freeze with the floating button or with **Pause** in the notification.
+5. Return to **Vision Lab**. Draw a slot, run **Identify hero**, and confirm or correct the
+   candidate. You can also process the frame and save the slots as a calibration profile.
+6. Tap **Resume** in the notification or the Vision Lab to return to live frames. Stop from
+   the app, the notification, or by revoking consent.
+
+Physical-device behaviour is not yet verified end to end. The checklist and its honest
+status are in [docs/TESTING_PHYSICAL_DEVICE.md](docs/TESTING_PHYSICAL_DEVICE.md).
+
+## Documentation
+
+Current state:
+- [Architecture](docs/ARCHITECTURE.md) — modules, layers, flows and boundaries.
+- [Screen capture](docs/SCREEN_CAPTURE.md) — MediaProjection lifecycle, freeze, visibility, resize, overlay.
+- [Vision architecture](docs/VISION_ARCHITECTURE.md) — frame, geometry, preprocessing, annotation, recognition.
+- [Vision frame contract](docs/VISION_FRAME_CONTRACT.md) — payload and ownership rules.
+- [Vision coordinates](docs/VISION_COORDINATES.md) — normalized space, rotation and crop semantics.
+- [Vision Lab](docs/VISION_LAB.md) — user-facing controls.
+- [Data sources](docs/DATA_SOURCES.md) — hero catalog providers and their contracts.
+- [Testing](docs/VISION_TESTING.md) — test inventory and CI gates.
+- [Physical-device checklist](docs/TESTING_PHYSICAL_DEVICE.md) — what still needs a device.
+- [Implementation report](docs/IMPLEMENTATION_REPORT.md) — delivered scope and verification status.
+- [ADR-001](docs/decisions/ADR-001-android-native.md) — native, single-module decision.
+
+Historical records, kept for provenance:
+- [Sprint 1B](docs/sprints/SPRINT_1B_HERO_RECOGNITION.md), [Sprint 1C](docs/sprints/SPRINT_1C_APP_ONLY_CAPTURE.md).
+- [Sprint 1A plan](docs/superpowers/plans/2026-11-06-sprint-1a-vision-foundation.md), [Sprint 1C plan](docs/superpowers/plans/2026-11-16-sprint-1c-app-only-capture.md).
+- [Sprint 1A design](docs/superpowers/specs/2026-11-06-sprint-1a-vision-foundation-design.md), [Sprint 1C design](docs/superpowers/specs/2026-11-16-sprint-1c-app-only-capture-design.md).
+- [Task history](tasks/todo.md), [roadmap](tasks/plan.md).

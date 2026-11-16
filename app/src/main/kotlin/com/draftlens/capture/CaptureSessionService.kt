@@ -616,11 +616,6 @@ class CaptureSessionService : Service() {
         }
     }
 
-    fun stopCapture() {
-        cleanupAfterTermination(forceIdle = true)
-        stopSelf()
-    }
-
     override fun onTaskRemoved(rootIntent: Intent?) {
         // MediaProjection tokens cannot survive process death. Do not recreate them from a null intent.
         Log.i(TAG, "Activity task removed; capture session will not be restarted with stale consent")

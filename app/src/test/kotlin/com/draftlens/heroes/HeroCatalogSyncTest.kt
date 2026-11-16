@@ -1,6 +1,5 @@
 package com.draftlens.heroes
 
-import com.draftlens.vision.heroes.HeroCatalogEntry
 import com.draftlens.vision.heroes.HeroCatalogSource
 import com.draftlens.vision.heroes.HeroCatalogSync
 import com.draftlens.vision.heroes.HeroHttpResponse

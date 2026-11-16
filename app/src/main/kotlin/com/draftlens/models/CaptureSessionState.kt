@@ -16,8 +16,7 @@ data class CaptureSessionState(
     val lastFrameProcessingLatencyMs: Long? = null,
     val isPaused: Boolean = false,
     val lastError: String? = null,
-    val startedAtMs: Long? = null,
-    val detectionStatus: String = "Not implemented in Sprint 0"
+    val startedAtMs: Long? = null
 ) {
     val isCapturing: Boolean get() = status == CaptureStatus.CAPTURING || status == CaptureStatus.PAUSED
     val isStartBlocking: Boolean get() = status != CaptureStatus.IDLE && status != CaptureStatus.ERROR

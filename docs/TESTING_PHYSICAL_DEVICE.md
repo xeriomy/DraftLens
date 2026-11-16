@@ -1,21 +1,27 @@
-# Physical-device lifecycle checklist — DraftLens
+# Physical-device checklist
 
-Status values: **PASS**, **FAIL**, **PARTIAL**, **NOT RUN**. Record the commit SHA, APK artifact run ID, device model and Android version for each execution. Do not mark a row PASS without evidence from that run.
+CI proves compilation, pure logic and lint. It cannot prove MediaProjection, visibility or
+overlay behaviour on hardware, so this checklist is the remaining verification work. Status
+values are **PASS**, **FAIL**, **PARTIAL** and **NOT RUN**. Record the commit SHA, APK artifact
+run ID, device model and Android version for every execution. Do not mark a row PASS without
+evidence from that run.
 
-> Maintainer-reported baseline: Sprint 0 capture and preview were smoke-tested on a physical Android device and confirmed working. Device details, versions, frame counts and latency measurements from that test were not provided, so they are not recorded here. First capture is **PARTIAL** on that evidence; all expanded lifecycle rows below remain **NOT RUN**.
+## Maintainer-reported baseline (not evidence)
 
-> Maintainer-reported (Vision Lab, 1A.2 retained state): the Vision Lab interaction behavior in the currently shipped build was smoke-tested on a physical Android device and confirmed working. Device model, Android version, install source/APK artifact, test date, logs and recordings were **not** supplied, so they are not recorded here and no measurements are claimed. Tested and confirmed working:
->
-> - Slot selection, movement and resizing.
-> - Long-press property menu.
-> - Long-press-and-drag slot creation (creation selects the new slot; the property editor does not open automatically).
-> - The original compact red X deletion control at the top-right corner.
-> - Copy, paste and duplicate.
-> - Fullscreen entry/exit and Android Back.
-> - Annotation gesture isolation from page scrolling.
-> - Existing portrait/landscape rendering behavior.
->
-> This does **not** cover the MediaProjection lifecycle matrix. Repeated start/stop cycles, projection revocation, app-process interruption, rotation/resize handling, background stability, sustained capture and the remaining lifecycle rows below remain **NOT RUN**.
+Two smoke tests were reported on a physical device. No device model, Android version, install
+source, APK artifact, test date, logs, recordings or measurements were supplied, so neither is
+recorded as a verified result:
+
+- Sprint 0 capture and live preview were confirmed working. Row 1 is therefore **PARTIAL** on
+  that report alone.
+- Vision Lab interactions were confirmed working: slot selection, movement and resizing;
+  long-press property menu; long-press-and-drag creation; the compact red X delete control;
+  copy, paste and duplicate; fullscreen entry and Android Back; gesture isolation from page
+  scrolling; and portrait/landscape rendering.
+
+Neither report covers the MediaProjection lifecycle matrix, freeze workflow, landscape fix,
+app-only visibility or the floating control. All rows below remain **NOT RUN** until executed
+with the evidence described at the end of this file.
 
 | # | Scenario | Expected behavior | Status |
 |---:|---|---|---|
