@@ -25,7 +25,10 @@ import androidx.core.app.ServiceCompat
 import com.draftlens.MainActivity
 import com.draftlens.R
 import com.draftlens.models.CaptureStatus
+import com.draftlens.overlay.OverlayController
+import com.draftlens.overlay.OverlayEnablement
 import com.draftlens.vision.model.FrameRotation
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -58,6 +61,8 @@ class CaptureSessionService : Service() {
     private var frameJob: Job? = null
     private var frozenJob: Job? = null
     private var foregroundPromoted = false
+    /** Non-null only while the floating control may be attached (user-enabled + permitted + capturing). */
+    private var overlayController: OverlayController? = null
     /** Increments once per capture session; tags every structured log line. */
     private var sessionCounter = 0
 
@@ -179,6 +184,15 @@ class CaptureSessionService : Service() {
                 }
                 START_NOT_STICKY
             }
+            ACTION_OVERLAY_UPDATE -> {
+                // Re-evaluates the floating control against the current preference/permission/session state.
+                scope.launch { syncFloatingControl() }
+                val status = CaptureStateHolder.state.value.status
+                if (status != CaptureStatus.CAPTURING && status != CaptureStatus.PAUSED && status != CaptureStatus.STARTING) {
+                    stopSelf() // nothing to update; don't linger for a stale refresh
+                }
+                START_NOT_STICKY
+            }
             else -> START_NOT_STICKY
         }
     }
@@ -222,6 +236,7 @@ class CaptureSessionService : Service() {
                         createVirtualDisplay(proj, captureWidth, captureHeight, dpi)
                         registerDisplayListener()
                         CaptureStateHolder.beginCapture(captureWidth, captureHeight, dpi)
+                        attachFloatingControl()
                         collectFrames()
                     }
                 )
@@ -232,6 +247,36 @@ class CaptureSessionService : Service() {
                 Log.e(TAG, "Capture session startup failed", e)
                 terminateCaptureWithError("Failed to start capture: ${e.message}")
             }
+        }
+    }
+
+    /** Creates the overlay controller and asks it to show; the controller re-checks the
+     *  preference and the Android overlay permission asynchronously. No-op when present. */
+    private fun attachFloatingControl() {
+        if (overlayController != null) return
+        val app = application as? com.draftlens.DraftLensApp ?: run {
+            Log.w(TAG, "floating control unavailable: unexpected application type")
+            return
+        }
+        val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val (width, height) = captureDimensions(wm)
+        overlayController = OverlayController(applicationContext, app.preferences, scope)
+        overlayController?.show(width, height)
+    }
+
+    /** Adds or removes the overlay to match preference + permission + session state. */
+    private suspend fun syncFloatingControl() {
+        val app = application as? com.draftlens.DraftLensApp ?: return
+        val enabled = runCatching { app.preferences.floatingControlEnabled.first() }.getOrElse { false }
+        val canDraw = runCatching { android.provider.Settings.canDrawOverlays(this) }.getOrDefault(false)
+        val running = CaptureStateHolder.state.value.status == CaptureStatus.CAPTURING ||
+            CaptureStateHolder.state.value.status == CaptureStatus.PAUSED
+        if (OverlayEnablement.shouldAttachOverlay(enabled, canDraw, running)) {
+            if (overlayController == null) attachFloatingControl()
+        } else {
+            Log.i(TAG, "floating control detached (enabled=$enabled canDraw=$canDraw running=$running)")
+            overlayController?.detach()
+            overlayController = null
         }
     }
 
@@ -317,6 +362,7 @@ class CaptureSessionService : Service() {
         frozenJob = scope.launch {
             CaptureStateHolder.frozenFrame.collectLatest { frozen ->
                 updateNotificationState(frozen != null)
+                overlayController?.setFrozen(frozen != null)
             }
         }
     }
@@ -436,6 +482,8 @@ class CaptureSessionService : Service() {
                         Log.i(TAG, "session=$sessionCounter display metrics changed ${current.displayWidth}x${current.displayHeight} -> ${width}x${height}; resyncing capture size")
                         recreateDisplay(width, height, source = "display-listener")
                     }
+                    // Keep the overlay anchored to the (possibly rotated) free axis.
+                    overlayController?.onDisplayMetricsChanged(width, height)
                 }
             }
         }
@@ -476,6 +524,9 @@ class CaptureSessionService : Service() {
     }
 
     private fun releaseCaptureResources(releaseForeground: Boolean) {
+        // The overlay goes first: after stop the control has nothing to toggle and must never linger.
+        overlayController?.detach()
+        overlayController = null
         Log.i(TAG, "session=$sessionCounter release: captureJob/frameJob/frozenJob cancelled=${captureJob != null || frameJob != null || frozenJob != null}")
         captureJob?.cancel()
         captureJob = null
@@ -616,6 +667,7 @@ class CaptureSessionService : Service() {
         const val ACTION_RESUME = "com.draftlens.action.RESUME_CAPTURE"
         const val ACTION_FREEZE = "com.draftlens.action.FREEZE_CAPTURE"
         const val ACTION_RESUME_LIVE = "com.draftlens.action.RESUME_LIVE_CAPTURE"
+        const val ACTION_OVERLAY_UPDATE = "com.draftlens.action.OVERLAY_UPDATE"
         const val EXTRA_RESULT_CODE = "extra_result_code"
         const val EXTRA_DATA = "extra_data"
         const val EXTRA_INTERVAL_MS = "extra_interval_ms"
@@ -638,5 +690,8 @@ class CaptureSessionService : Service() {
 
         fun resumeIntent(context: Context): Intent =
             Intent(context, CaptureSessionService::class.java).setAction(ACTION_RESUME)
+
+        fun overlayUpdateIntent(context: Context): Intent =
+            Intent(context, CaptureSessionService::class.java).setAction(ACTION_OVERLAY_UPDATE)
     }
 }

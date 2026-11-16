@@ -19,4 +19,7 @@ object CaptureController {
     fun stop(context: Context) = context.startService(CaptureSessionService.stopIntent(context))
     fun pause(context: Context) = context.startService(CaptureSessionService.pauseIntent(context))
     fun resume(context: Context) = context.startService(CaptureSessionService.resumeIntent(context))
+
+    /** Re-evaluates the floating control after the user toggled it or granted the permission. */
+    fun refreshOverlay(context: Context) = context.startService(CaptureSessionService.overlayUpdateIntent(context))
 }

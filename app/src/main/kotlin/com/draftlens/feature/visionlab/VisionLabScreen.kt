@@ -192,14 +192,18 @@ private fun FramePreviewCard(
                     "Resume returns to live frames."
                 } else {
                     "Freeze locks the current frame before annotation. While in game, tap " +
-                        "“Freeze current frame” on the capture notification instead."
+                        "the circular DraftLens overlay button (or “Freeze current frame” on the " +
+                        "capture notification) instead."
                 },
                 style = MaterialTheme.typography.bodySmall,
             )
             Text(
-                "Capturing Mobile Legends? When Android asks what to capture, choose Entire screen / " +
-                    "full device display. App-window capture cannot see the game. The capture " +
-                    "notification’s Freeze action needs notifications enabled.",
+                "Capturing Mobile Legends? Prefer Single app / app window → Mobile Legends when " +
+                    "Android offers it; otherwise choose Entire screen / full device display (it can " +
+                    "include the notification shade and system UI — DraftLens cannot promise " +
+                    "notification-free frames on that path). While in the game, tap the circular " +
+                    "DraftLens overlay button (floating control, capture screen), or “Freeze current " +
+                    "frame” on the capture notification (notifications enabled).",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

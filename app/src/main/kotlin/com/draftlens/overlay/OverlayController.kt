@@ -40,13 +40,23 @@ class OverlayController(
 
     val isAttached: Boolean get() = view != null
 
-    /** Reads the persisted position, then adds the overlay. Main thread. */
+    /**
+     * Adds the overlay after re-checking the user preference and the Android overlay
+     * permission — capture start calls this unconditionally, so the gate lives here.
+     * Main-thread attachment; the permission comes from the caller's toggle flow.
+     */
     fun show(screenWidthPx: Int, screenHeightPx: Int) {
         if (view != null) {
             Log.i(TAG, "overlay already attached; skipping show()")
             return
         }
         scope.launch {
+            val enabled = runCatching { preferences.floatingControlEnabled.first() }.getOrElse { false }
+            val canDraw = runCatching { android.provider.Settings.canDrawOverlays(context) }.getOrDefault(false)
+            if (!OverlayEnablement.shouldAttachOverlay(enabled, canDraw, captureRunning = true)) {
+                Log.i(TAG, "overlay not attached (enabled=$enabled canDrawOverlays=$canDraw)")
+                return@launch
+            }
             val persisted = runCatching { preferences.floatingPosition.first() }.getOrNull()
             val normalized = persisted ?: currentNormalized
             currentNormalized = normalized
