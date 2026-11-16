@@ -75,8 +75,8 @@ fun DebugCaptureScreen(
         }
     }
 
-    // Notification permission: the capture notification carries the "Freeze current frame"
-    // action, so without it the MLBB freeze workflow is unreachable.
+    // Notification permission: the capture notification keeps a Freeze action, but the
+    // floating control and in-app Freeze/Resume work without it.
     var notificationsEnabled by remember { mutableStateOf(areCaptureNotificationsEnabled(activity)) }
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
