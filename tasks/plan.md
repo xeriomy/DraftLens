@@ -230,3 +230,13 @@ permissions only; replace the notification Freeze action with Pause/Resume on th
 - [x] Tests: PublishStateMatrixTest, holder pause-preservation tests, sequence pause test,
       instrumented overlay publication-flip attach test
 - [ ] CI green record; physical-device rows 44–53 NOT RUN
+
+## Sprint 1C — single-app first-frame fix (this revision)
+- [x] Diagnostics first: `CaptureDiagnostics` + per-stage callback/acquisition/gate logs
+- [x] Service-owned `CaptureVisibilityPolicy` with UNKNOWN/VISIBLE/HIDDEN; early callbacks
+      preserved; UNKNOWN open; first frame promotes to VISIBLE; stale callbacks rejected
+- [x] Service-owned `PendingResize`: early captured-content dimensions retained, applied to
+      both ImageReader and VirtualDisplay, idempotent; no session kill before VD creation
+- [x] Pipeline no longer resets the gate; holder records frames published during STARTING
+- [x] JVM tests: early callbacks, UNKNOWN semantics, promotions, pending-resize retention,
+      sequences; device A–E checklist added (NOT RUN)

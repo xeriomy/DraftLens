@@ -80,6 +80,61 @@ Record the outcome of rows 34/35 here (device model, Android version, OEM skin) 
 the button contaminated hero-slot crops taken on the fallback path. Do not mark a row PASS
 without evidence from that run.
 
+## Focused first-frame test: Single-app MLBB (Sprint 1C follow-up)
+
+**Status: NOT RUN.** This is the decisive test for the reported "No frame captured yet"
+bug. Run each part on a physical device and record the log lines below with device model,
+Android version, OEM skin, APK run ID and commit SHA. Do not mark PASS without evidence.
+
+Collect bounded diagnostics (first 4 + every 20 per event; no pixels are logged):
+
+```sh
+adb logcat -c && adb logcat -v time -s CaptureSessionService FramePipeline
+```
+
+Key lines and what they answer:
+- `visibility-callback seq=N visible=... pipelineInitialized=... status=...` — was a
+  callback received, with what value, before or after pipeline init, and in what order.
+- `resize-callback seq=N WxH status=... virtualDisplayReady=...` and
+  `capture-start ... source=pending-captured-content-resize` — was the selected app's
+  early resize retained and applied to both reader and VirtualDisplay?
+- `acquire: ... acquired=N image=WxH isActive=... generationCurrent=... frozen=...
+  contentVisible=...` — does ImageReader receive images at all (no lines = platform did
+  not deliver; lines present = our code rejected them).
+- `drop gate=<reason>` (`isActive` / `staleGeneration` / `frozen` / `contentHidden`),
+  `drop sampling`, `drop conversion-failed`, `converted ... bitmap=WxH`,
+  `published to _latestFrame`, `recordFrame delivered` — where the frames stopped.
+- `freeze: NoFrame ... visibility=...` — the state at the moment the button reported it.
+
+A. Full-display baseline
+- [ ] Start capture with **Entire screen**; confirm `acquire:` and `published to
+      _latestFrame` lines, preview updates, and Freeze pins the current frame. (NOT RUN)
+
+B. Single-app MLBB
+- [ ] Fresh session → **Single app** → **Mobile Legends**.
+- [ ] Wait until MLBB is visibly in the foreground; record whether
+      `onCapturedContentVisibilityChanged(true)` arrived (and its seq/order).
+- [ ] Confirm ImageReader receives images (`acquire:` lines) and at least one frame is
+      converted and published (`published to _latestFrame`, `recordFrame delivered`).
+- [ ] Tap the floating Freeze button; confirm the game frame is pinned. (NOT RUN)
+
+C. Visibility transitions
+- [ ] Switch MLBB → DraftLens: no hidden-window frame replaces the last valid game frame.
+- [ ] Return to MLBB: publication resumes; Freeze/Resume work again. (NOT RUN)
+
+D. Isolate overlay effects
+- [ ] Repeat B with the floating overlay **disabled**. The first-frame behavior must be
+      identical; if it is not, the overlay window — not the capture gate — is implicated.
+      (NOT RUN)
+
+E. Resize
+- [ ] Record the selected app's reported dimensions from `resize-callback` and confirm
+      ImageReader/VirtualDisplay match (`virtual-display resized` / `bitmap=WxH`).
+- [ ] Repeat with MLBB in landscape. (NOT RUN)
+
+If no `acquire:` lines appear at all in B, the platform did not deliver images to
+ImageReader — report that finding with the logcat rather than changing the policy again.
+
 ## Evidence to capture each run
 - `git rev-parse --short HEAD`
 - Device model and Android version (`adb shell getprop ro.product.model`, `adb shell getprop ro.build.version.release`)

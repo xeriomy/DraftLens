@@ -38,9 +38,9 @@ class CaptureVisibilityPolicy {
     fun boundSessionId(): Int = sessionId
 
     /** Called once per capture session, before consent/projection resources exist. */
-    fun resetForNewSession(id: Int) = synchronized(lock) {
+    fun resetForNewSession(sessionId: Int) = synchronized(lock) {
         state = CapturedContentVisibility.UNKNOWN
-        sessionId = id
+        this.sessionId = sessionId
         sequence = 0L
         Unit
     }
@@ -49,8 +49,8 @@ class CaptureVisibilityPolicy {
      * Stores a platform callback, including those arriving before the pipeline is ready.
      * Callbacks for a previous session are ignored (stale projection token).
      */
-    fun onContentVisibilityChanged(visible: Boolean, id: Int): VisibilityTransition = synchronized(lock) {
-        if (id != sessionId) {
+    fun onContentVisibilityChanged(visible: Boolean, sessionId: Int): VisibilityTransition = synchronized(lock) {
+        if (sessionId != this.sessionId) {
             VisibilityTransition(state, state, sequence, accepted = false)
         } else {
             sequence += 1

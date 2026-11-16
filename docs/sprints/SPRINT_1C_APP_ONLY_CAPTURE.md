@@ -166,3 +166,16 @@ preview are unchanged.
 - Implementation head `130ce6c`: CI run 43922482183 — **904 unit tests, 0 failures / 0 errors / 0 skipped**;
   lint + `assembleAndroidTest` + `assembleDebug` green; APK sha256 `48b510673919fe2caa9c906747d9dc766eb27bb170c589f67b58c9a175dd7b72`.
 - Physical device: rows 44–53 remain **NOT RUN**.
+
+## Follow-up: single-app first-frame bug
+
+Root cause: Sprint 1C registered MediaProjection callbacks before the pipeline,
+VirtualDisplay and session state were ready. Early visibility `false` and early
+captured-content resize were lost/overwritten or treated as fatal; the boolean gate could
+block the first frame forever. Diagnostics were added first (`CaptureDiagnostics`, callback
+seq/readiness logs, per-stage drop reasons, no pixels); then the fix: service-owned explicit
+UNKNOWN/VISIBLE/HIDDEN policy (UNKNOWN intentionally open, first frame promotes to VISIBLE),
+service-owned `PendingResize` applied to both VirtualDisplay and ImageReader at startup,
+no pipeline-side visibility reset, and holder delivery of frames published during STARTING.
+See `docs/IMPLEMENTATION_REPORT.md` and the focused A–E device test in
+`docs/TESTING_PHYSICAL_DEVICE.md` (**NOT RUN**).

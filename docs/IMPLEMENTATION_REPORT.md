@@ -662,3 +662,66 @@ compact card.
   it change no build inputs and are re-checked by CI on every push.
 - Instrumented tests: compiled via `assembleAndroidTest`; not executed (no KVM).
 - Physical device rows 44–53: **NOT RUN** — see `docs/TESTING_PHYSICAL_DEVICE.md`.
+
+---
+
+# Sprint 1C — Single-app first-frame bug fix
+
+**Branch:** `sprint-1c-app-only-capture` (stacked on PR #3, unmerged) · **PR:** #4
+
+## Root cause (code-level evidence)
+
+The Sprint 1B capture path had no visibility gate. Sprint 1C introduced one and registered
+`MediaProjection.Callback` **before** `FramePipeline.start()`, `createVirtualDisplay()` and
+`CaptureStateHolder.beginCapture()`. On single-app capture both callbacks can arrive in
+that STARTING window:
+
+1. `onCapturedContentVisibilityChanged(false)` — the selected MLBB window is hidden while
+   the user is still in DraftLens. With the old boolean gate, that value either got
+   overwritten by `pipeline.start()`'s unconditional `true` or closed the gate before any
+   frame existed. A missed/first-only callback leaves publication blocked with no valid
+   frame to protect — the "No frame captured yet" toast.
+2. `onCapturedContentResize(W,H)` with the *selected app's* dimensions — `recreateDisplay`
+   either ignored it (status STARTING) or terminated the session as "VirtualDisplay
+   disappeared during resize" when it arrived before the VirtualDisplay existed. The
+   reader stayed at DraftLens' window metrics.
+3. `frameJob` also dropped frames published before `beginCapture()` from the holder.
+
+This is one ordering defect across both callbacks, not three unrelated bugs: startup events
+were not buffered and the gate's initial boolean could be confused with a real callback.
+
+## Diagnostics (added before changing the policy)
+
+`CaptureDiagnostics` rate-limits every event key (first 4 + every 20; no pixel data).
+`CaptureSessionService` logs callback seq/value/pipelineInitialized/status and resize
+seq/dimensions/readiness. `FramePipeline` logs acquisition count, image dimensions,
+generation, isActive/generationCurrent/frozen/contentVisible, the exact gate-reject reason,
+sampling accept/reject, conversion success/failure and bitmap dimensions, publication and
+holder delivery. `freezeAndSnapshot` logs the state behind `NoFrame`. These log lines are
+the evidence the maintainer needs to answer: "did ImageReader receive images that our code
+rejected, or did the platform deliver none?" — see `docs/TESTING_PHYSICAL_DEVICE.md`,
+"Focused first-frame test".
+
+## Fix
+
+- `CaptureVisibilityPolicy` now uses explicit `UNKNOWN` / `VISIBLE` / `HIDDEN`. UNKNOWN
+  deliberately allows publication (full-display never calls back; an early single-app
+  `false` must not block the first frame). The first published frame promotes
+  UNKNOWN → VISIBLE, after which `false` is authoritative and protects the valid frame.
+  The policy is owned by the service, so callbacks before pipeline creation are preserved;
+  stale-session callbacks are rejected; duplicate callbacks are idempotent.
+- `FramePipeline` no longer resets visibility in `start()`/`prepareResize`; it consults the
+  injected policy, promotes on publish, and no longer duplicates callback state.
+- `PendingResize` buffers the latest valid captured-content dimensions during startup.
+  `initializeProjection` sizes both ImageReader and VirtualDisplay from the buffered value
+  when present, applies any later value after `beginCapture()`, stays idempotent, and no
+  longer fails the session for a resize that arrived before the VirtualDisplay existed.
+- `frameJob` records every published frame (the pipeline clears `latestFrame` on stop).
+
+## Verification
+
+- CI head / APK digest: see the PR #4 description (edited after each green run).
+- Instrumented tests: compiled, not executed (no KVM on the runner).
+- Physical device: the A–E first-frame checklist and rows 44–53 of
+  `docs/TESTING_PHYSICAL_DEVICE.md` are **NOT RUN**. This fix is not claimed to work on a
+  device from JVM tests or CI alone.

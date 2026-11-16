@@ -145,3 +145,9 @@ Verification runs in GitHub Actions because the authoring host has no Android to
 - [x] Permissions-only UI (notification + overlay); tutorial and help text removed
 - [x] Docs sync + device rows 44–53; tests added (JVM + compile-only instrumented)
 - [x] Task 10: CI green record (run 43922482183 at `130ce6c`: 904 unit tests, 0 failures; APK sha256 `48b5…`); report
+
+## Sprint 1C single-app first-frame fix
+- [x] Diagnostics before policy change (`CaptureDiagnostics`)
+- [x] Explicit visibility state model + pending captured-content resize; startup ordering fixed
+- [x] JVM regression tests + physical-device A–E checklist (NOT RUN)
+- [ ] Task 10: CI green record + APK digest; report
