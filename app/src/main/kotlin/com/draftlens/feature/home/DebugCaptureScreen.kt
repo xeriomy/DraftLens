@@ -50,6 +50,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import com.draftlens.vision.model.android.BitmapFramePayload
 
@@ -271,18 +272,25 @@ private fun FloatingControlCard(
     val body = MaterialTheme.typography.bodySmall
     var overlayGranted by remember { mutableStateOf(Settings.canDrawOverlays(activity)) }
     var pendingEnable by remember { mutableStateOf(false) }
-    val floatingEnabled by preferences.floatingControlEnabled.collectAsState(initial = false)
+    val floatingEnabledFlow = remember(preferences) {
+        preferences.floatingControlEnabled.catch { emit(false) }
+    }
+    val floatingEnabled by floatingEnabledFlow.collectAsState(initial = false)
     val frozen by CaptureStateHolder.frozenFrame.collectAsState()
     val scope = rememberCoroutineScope()
 
-    // Returning from the Android overlay-permission settings screen completes a pending enable.
+    // Returning from the Android overlay-permission settings screen resolves a pending enable exactly once.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        overlayGranted = Settings.canDrawOverlays(activity)
-        if (pendingEnable && overlayGranted) {
+        val granted = Settings.canDrawOverlays(activity)
+        overlayGranted = granted
+        if (pendingEnable) {
             pendingEnable = false
-            scope.launch {
-                preferences.setFloatingControlEnabled(true)
-                CaptureController.refreshOverlay(activity)
+            if (granted) {
+                scope.launch {
+                    runCatching { preferences.setFloatingControlEnabled(true) }
+                        .onFailure { android.util.Log.w("DraftLens", "failed to persist floating control enable", it) }
+                    CaptureController.refreshOverlay(activity)
+                }
             }
         }
     }
@@ -311,7 +319,8 @@ private fun FloatingControlCard(
                         if (checked) {
                             if (Settings.canDrawOverlays(activity)) {
                                 scope.launch {
-                                    preferences.setFloatingControlEnabled(true)
+                                    runCatching { preferences.setFloatingControlEnabled(true) }
+                                        .onFailure { android.util.Log.w("DraftLens", "failed to persist floating control enable", it) }
                                     CaptureController.refreshOverlay(activity)
                                 }
                             } else {
@@ -324,7 +333,8 @@ private fun FloatingControlCard(
                             }
                         } else {
                             scope.launch {
-                                preferences.setFloatingControlEnabled(false)
+                                runCatching { preferences.setFloatingControlEnabled(false) }
+                                    .onFailure { android.util.Log.w("DraftLens", "failed to persist floating control disable", it) }
                                 CaptureController.refreshOverlay(activity)
                             }
                         }

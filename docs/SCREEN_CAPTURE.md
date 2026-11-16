@@ -10,7 +10,8 @@ with `ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` → `getMediaProject
 
 A single circular 52dp button rendered via `WindowManager` + `TYPE_APPLICATION_OVERLAY`,
 attached by the capture foreground service **only while a capture session is running** and
-removed on every stop/terminate path. It is the primary in-game freeze control; the
+removed on every stop/terminate path — a detach() invalidates any in-flight attach, so a
+teardown can never orphan the window. It is the primary in-game freeze control; the
 notification retains its Stop action (and the Freeze/Resume actions) but is no longer the
 primary workflow.
 
@@ -74,7 +75,11 @@ process death.
   published; the last valid published game frame is preserved. When the window returns,
   publication resumes automatically unless a frame is pinned. Full-display captures never
   report hidden, so this path is inert there. Below API 34 the signal does not exist and
-  the behavior degrades to the previous full-display semantics.
+  the behavior degrades to the previous full-display semantics. The callback is fed to the
+  pipeline regardless of session status, so a hide during PAUSED cannot stale the gate on
+  resume. If the captured window is already hidden when a session starts, publication stays
+  open until the first visibility callback arrives (typically milliseconds) — the gate
+  defaults to open because full-display projections may never call the callback at all.
 - **Capture dimensions:** API 30+ uses `WindowManager.maximumWindowMetrics`; lower APIs retain
   the legacy `defaultDisplay.getSize()` path.
 - **Android 12+**: partial screen capture (share one app) is possible in the system dialog.

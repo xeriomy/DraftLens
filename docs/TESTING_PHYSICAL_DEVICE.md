@@ -32,7 +32,7 @@ Status values: **PASS**, **FAIL**, **PARTIAL**, **NOT RUN**. Record the commit S
 | 11 | Sustained capture memory/latency | Memory bounded; frame processing latency reported separately from detection latency | NOT RUN |
 | 12 | DraftLens foreground vs MLBB foreground | Selected capture target is clear; preview corresponds to chosen scope | NOT RUN |
 | 13 | Screenshots in app | System screenshot path works normally | NOT RUN |
-| 14 | Full-device capture for the MLBB freeze workflow | When Android asks what to capture, **Entire screen / full device display** is chosen; live preview shows MLBB content | NOT RUN |
+| 14 | Full-device capture for the MLBB freeze workflow | When Android asks what to capture, **Entire screen / full device display** is chosen (fallback mode; preferred is Single app → MLBB — see rows 33–43); live preview shows MLBB content | NOT RUN |
 | 15 | Freeze from the notification while in MLBB | Tap **Freeze current frame** on the capture notification without leaving the game; the pinned frame survives returning to DraftLens; Vision Lab shows the MLBB frame, not the DraftLens UI | NOT RUN |
 | 16 | Newer live frames cannot replace the frozen frame | While frozen, DraftLens keeps acquiring/closing images but publishes none; Vision Lab keeps showing the MLBB frame | NOT RUN |
 | 17 | Resume from Vision Lab and from the notification | **Resume** (Vision Lab) or **Resume live capture** (notification) reveals live frames without a new projection or VirtualDisplay; notification action flips back to LIVE | NOT RUN |

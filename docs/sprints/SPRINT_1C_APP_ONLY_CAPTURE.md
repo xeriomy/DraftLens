@@ -21,7 +21,8 @@ until #3 lands. Do not merge this PR before #3 is merged and this PR is rebased 
 | Pipeline gate | `FramePipeline.kt` | While the captured-content window is hidden, images are acquired and closed but never converted/published; the publish-time synchronized block double-checks |
 | Visibility callback | `CaptureSessionService.projectionCallback.onCapturedContentVisibilityChanged` | API 34+; forwards to the pipeline; ignored unless CAPTURING; resize path unchanged |
 | Overlay math (pure) | `overlay/OverlayPosition.kt` | Normalized (0..1) position on the free axis; pixel round-trip; edge snapping; clamping; JVM-tested |
-| Overlay enablement (pure) | `overlay/OverlayEnablement.kt` | `ShowControl`/`RequestPermission`/`KeepHidden` decision; JVM-tested |
+| Overlay enablement (pure) | `overlay/OverlayEnablement.kt` | `shouldAttachOverlay(preference, permission, session)` gate; JVM-tested |
+| Pending-attach invalidation | `OverlayController.kt` | generation counter: a detach() invalidates any in-flight show(), so a teardown during the DataStore read can never orphan the button |
 | Overlay position persistence | `AppPreferencesRepository` | `floating_control_enabled`, `floating_position_x/y` in the existing preferences store |
 | Floating button | `overlay/FloatingControlView.kt` | 52dp circle, LIVE green / FROZEN orange, white glyph, content description, system font |
 | Overlay window | `overlay/OverlayController.kt` | `TYPE_APPLICATION_OVERLAY` + `FLAG_NOT_FOCUSABLE`; tap = freeze/resume via the shared `CaptureFreeze` path; long-press (400 ms) drag; edge snap + persist on release; re-anchored on rotation via the display listener |
@@ -72,7 +73,7 @@ CAPTURING-state guard alongside `onCapturedContentResize`:
 **Whether the DraftLens overlay appears inside a MediaProjection capture is a physical-device
 question and is NOT verified in this sprint.** The overlay does not set any flag to hide
 itself from capture, and no capture region is masked. Expectations to check on device
-(rows 33–34 of `docs/TESTING_PHYSICAL_DEVICE.md`):
+(rows 34/35 of `docs/TESTING_PHYSICAL_DEVICE.md`):
 
 - Single-app MLBB capture **should** carry only the MLBB window; on many devices the
   overlay (a separate window belonging to DraftLens) will not be included.
@@ -97,6 +98,10 @@ Android toolchain.
   `assembleAndroidTest` green; `assembleDebug` green; APK `app-debug.apk`
   sha256 `3f390ac92458815e292897dfe937ae66bd9179946d533a33cf1a9386b864b551`.
 - Instrumentation tests: **compiled via `assembleAndroidTest`; not executed** (no KVM on the runner).
+- Automated coverage gaps, stated honestly: **LIVE→FROZEN pinning a real frame** (an
+  ImageReader surface cannot be filled from a test Canvas, and the pin path is exercised
+  on device — rows 36/37) and **resize during freeze** (the gate is dimension-agnostic by
+  construction; policy truth-table pins it — on-device rows 25/30 pin the pipeline path).
 - Physical-device rows 33–43: **NOT RUN** — see `docs/TESTING_PHYSICAL_DEVICE.md`
 
 ## Explicitly not built (scope restrictions)

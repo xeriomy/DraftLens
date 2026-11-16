@@ -67,10 +67,4 @@ object OverlayPosition {
         )
     }
 
-    /** Snap result expressed in normalized coordinates, ready for DataStore. */
-    fun snapNormalized(normalized: Normalized, screenWidthPx: Int, screenHeightPx: Int, sizePx: Int): Normalized {
-        val px = normalizedToPixels(normalized, screenWidthPx, screenHeightPx, sizePx)
-        val snapped = snapToNearestEdge(px.left, px.top, screenWidthPx, screenHeightPx, sizePx)
-        return pixelsToNormalized(snapped.left, snapped.top, screenWidthPx, screenHeightPx, sizePx)
-    }
 }

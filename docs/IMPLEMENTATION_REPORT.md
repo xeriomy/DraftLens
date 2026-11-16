@@ -605,8 +605,14 @@ the matcher/Vision Lab are unaffected (this bug is in the capture pipeline only)
 
 - API < 34: no visibility signal; app-only windows are undetectable — behavior degrades to
   full-display semantics.
+- If the captured window is already hidden when a session starts, publication stays open
+  until Android's first visibility callback arrives (API 34+; typically milliseconds). The
+  gate defaults to open because full-display projections may never call the callback at all.
 - Full-display fallback may capture the shade/system UI/other apps/DraftLens; the freeze
   controls still work.
 - Whether the overlay appears inside captures is unverified per device (see sprint doc).
 - A resume requested while MLBB is hidden flips the user's intent to LIVE and takes effect
   when MLBB returns; publication stays gated while hidden (no black/DraftLens frames).
+- Resize during freeze is enforced by the pipeline's freeze gate (policy truth-table +
+  `CaptureVisibilityPolicyTest`) and by on-device rows 25/30; no synthetic-pixel
+  instrumented test exists — an ImageReader surface cannot be filled from a test Canvas.

@@ -82,11 +82,5 @@ class OverlayPositionTest {
         assertEquals(0, px.top)
     }
 
-    @Test fun `snapNormalized lands on an edge and round-trips through pixels`() {
-        val normalized = OverlayPosition.Normalized(x = 0.8f, y = 0.2f)
-        val snapped = OverlayPosition.snapNormalized(normalized, landscapeW, landscapeH, size)
-        val px = OverlayPosition.normalizedToPixels(snapped, landscapeW, landscapeH, size)
 
-        assertEquals(landscapeW - size, px.left)
-    }
 }

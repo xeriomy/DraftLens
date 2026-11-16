@@ -11,12 +11,14 @@ import com.draftlens.overlay.OverlayController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
-import org.junit.Test
+import org.junit.Assume.assumeTrueimport org.junit.Test
 import org.junit.runner.RunWith
 
 /**
@@ -66,6 +68,37 @@ class FloatingControlOverlayInstrumentedTest {
         assertTrue("overlay did not attach within 5s", waitUntil { created.isAttached })
         created.detach()
         assertFalse(created.isAttached)
+    }
+
+    @Test fun aPendingAttachIsInvalidatedByDetachSoNoOverlayIsOrphaned() {
+        assumeTrue(
+            "overlay appop not granted on this device; see class comment",
+            Settings.canDrawOverlays(context),
+        )
+        runBlocking { preferences.setFloatingControlEnabled(true) }
+
+        val created = OverlayController(context, preferences, scope)
+        controller = created
+        created.show(1080, 2400)
+        // Teardown lands while the DataStore read inside show() is still in flight.
+        created.detach()
+        Thread.sleep(1_000)
+
+        assertFalse("a detached controller must never attach afterwards", created.isAttached)
+    }
+
+    @Test fun floatingPositionRoundTripsThroughDataStore() = runBlocking {
+        // Note: writes the shared preferences store on the test device; restored at the end.
+        val prefs = AppPreferencesRepository(context)
+        prefs.setFloatingPosition(com.draftlens.overlay.OverlayPosition.Normalized(0.15f, 0.3f))
+
+        val read = prefs.floatingPosition.first()
+
+        assertNotNull("position must persist", read)
+        assertEquals(0.15f, read!!.x, 0.001f)
+        assertEquals(0.3f, read.y, 0.001f)
+        // Restore a sane default for the app on this device.
+        prefs.setFloatingPosition(com.draftlens.overlay.OverlayPosition.Normalized(1f, 0.18f))
     }
 
     private fun waitUntil(timeoutMs: Long = 5_000, condition: () -> Boolean): Boolean {

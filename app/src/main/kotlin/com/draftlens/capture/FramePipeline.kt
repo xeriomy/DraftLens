@@ -60,9 +60,6 @@ class FramePipeline(
         return transition
     }
 
-    /** Visibility state as the publication gate sees it; diagnostic only. */
-    fun isContentVisible(): Boolean = visibility.isContentVisible()
-
     /**
      * Bumped every time a new reader/surface generation is created (start/resize).
      * Images captured with an older generation are dropped, so a late callback from a

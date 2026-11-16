@@ -48,6 +48,15 @@ class OverlayController(
     val isAttached: Boolean get() = view != null
 
     /**
+     * Generation counter guarding pending attaches: every show() and every detach() bumps it,
+     * and attachView() refuses to run for a stale generation. Without this, a show() whose
+     * DataStore read settles after a teardown would add an orphaned always-on-top window
+     * nobody can dismiss (M1 review finding).
+     */
+    private val attachLock = Any()
+    private var attachGeneration = 0
+
+    /**
      * Adds the overlay after re-checking the user preference and the Android overlay
      * permission — capture start calls this unconditionally, so the gate lives here.
      * Main-thread attachment; the permission comes from the caller's toggle flow.
@@ -57,6 +66,7 @@ class OverlayController(
             Log.i(TAG, "overlay already attached; skipping show()")
             return
         }
+        val requestId = synchronized(attachLock) { ++attachGeneration }
         scope.launch {
             val enabled = runCatching { preferences.floatingControlEnabled.first() }.getOrElse { false }
             val canDraw = runCatching { android.provider.Settings.canDrawOverlays(context) }.getOrDefault(false)
@@ -67,14 +77,19 @@ class OverlayController(
             val persisted = runCatching { preferences.floatingPosition.first() }.getOrNull()
             val normalized = persisted ?: currentNormalized
             currentNormalized = normalized
-            mainHandler.post { attachView(screenWidthPx, screenHeightPx, normalized) }
+            mainHandler.post { attachView(screenWidthPx, screenHeightPx, normalized, requestId) }
         }
     }
 
-    private fun attachView(screenWidthPx: Int, screenHeightPx: Int, normalized: OverlayPosition.Normalized) {
-        if (view != null) return // a configure change raced the show() coroutine
-        this.screenWidthPx = screenWidthPx
-        this.screenHeightPx = screenHeightPx
+    private fun attachView(screenWidthPx: Int, screenHeightPx: Int, normalized: OverlayPosition.Normalized, requestId: Int) {
+        synchronized(attachLock) {
+            if (requestId != attachGeneration) {
+                Log.i(TAG, "discarding stale overlay attach (generation $requestId, now $attachGeneration)")
+                return
+            }
+            if (view != null) return // a configure change raced the show() coroutine
+            this.screenWidthPx = screenWidthPx
+            this.screenHeightPx = screenHeightPx
 
         val px = OverlayPosition.normalizedToPixels(normalized, screenWidthPx, screenHeightPx, sizePx)
         val button = FloatingControlView(
@@ -110,6 +125,7 @@ class OverlayController(
             view = null
             layoutParams = null
         }
+        }
     }
 
     /** Re-derives the pixel position from the normalized one after a resize/rotation. */
@@ -133,8 +149,9 @@ class OverlayController(
         mainHandler.post { view?.setFrozen(frozen) }
     }
 
-    /** Removes the overlay. Safe from any thread and when not attached. */
+    /** Removes the overlay. Safe from any thread and when not attached; invalidates pending attaches. */
     fun detach() {
+        synchronized(attachLock) { attachGeneration++ } // invalidate any in-flight show()
         val detachBlock = Runnable {
             val button = view ?: return@Runnable
             try {
@@ -162,6 +179,9 @@ class OverlayController(
         grabOffsetY = rawY - params.y
     }
 
+    // shortcut: clamps against the metrics snapshot from the last rotation signal, so a drag that
+    // spans exactly the rotation event can briefly clamp to the old orientation; upgrade by reading
+    // Metrics in dragTo() if MLBB-in-multi-window drags become real.
     private fun dragTo(rawX: Float, rawY: Float) {
         val params = layoutParams ?: return
         val button = view ?: return

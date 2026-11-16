@@ -83,11 +83,13 @@ class CaptureSessionService : Service() {
          * The projection stays valid: while hidden, images are acquired and closed but
          * never published, so DraftLens/shade/other apps can never replace the last
          * valid game frame. Returning to MLBB reopens publication unless a frame is pinned.
+         * Fed to the pipeline regardless of session status: a pause must not stale the
+         * gate (a hide during PAUSED would otherwise publish foreign frames on resume).
          */
         override fun onCapturedContentVisibilityChanged(isVisible: Boolean) {
             Log.i(TAG, "captured-content visibility changed: visible=$isVisible")
-            if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING) {
-                Log.i(TAG, "ignoring visibility change: capture is not in CAPTURING state")
+            if (!::pipeline.isInitialized) {
+                Log.i(TAG, "ignoring visibility change: pipeline is not created")
                 return
             }
             pipeline.onContentVisibilityChanged(isVisible)
