@@ -12,22 +12,25 @@ A single circular 52dp button rendered via `WindowManager` + `TYPE_APPLICATION_O
 attached by the capture foreground service **only while a capture session is running** and
 removed on every stop/terminate path — a detach() invalidates any in-flight attach, so a
 teardown can never orphan the window. It is the primary in-game freeze control; the
-notification retains its Stop action (and the Freeze/Resume actions) but is no longer the
-primary workflow.
+notification carries Stop and Pause and is the no-overlay fallback.
 
-Gestures: **tap** toggles LIVE ↔ FROZEN (green ↔ orange, white glyph, 52dp, non-focusable,
-content description set). **Long-press (400 ms) then drag** moves it; any movement before
+Gestures: **tap** toggles LIVE (green, publishing) ↔ orange (publication paused or a frame
+pinned); the glyph and color are driven only by the shared LIVE/PAUSED/FROZEN presentation
+(`CapturePublishState`), never by incoming frames — hiding the captured window cannot pause,
+detach or stale the button. **Long-press (400 ms) then drag** moves it; any movement before
 the long-press fires cancels the gesture entirely. On release it **snaps to the nearest
 horizontal edge** and persists its position as normalized coordinates in DataStore
 (`floating_control_enabled`, `floating_position_x/y`). Rotation re-anchors it via the
-display-metrics path; no re-consent, no re-attachment races.
+display-metrics path; no re-consent, no re-attachment races. The overlay lifecycle is fully
+independent of capture visibility: `onCapturedContentVisibilityChanged` gates only the
+frame pipeline.
 
-`SYSTEM_ALERT_WINDOW` is requested only when the user taps **Enable** on the capture
-screen (Android overlay-settings screen); the capture itself never needs it. If the
-permission is missing or revoked: capture and in-app/notification Freeze/Resume are
-unaffected, the toggle explains how to grant it, and no button is shown. The button calls
-the exact same `CaptureFreeze` path as everything else — it never creates a second
-VirtualDisplay or re-requests consent.
+`SYSTEM_ALERT_WINDOW` is requested only when the user enables the floating button on the
+capture screen (Android overlay-settings screen); the capture itself never needs it. If the
+permission is missing or revoked: capture and the in-app Freeze/Resume and the notification
+Stop/Pause actions are unaffected, the capture screen explains how to grant it, and no
+button is shown. The button calls the exact same shared pause/freeze path as everything
+else — it never creates a second VirtualDisplay or re-requests consent.
 
 **Isolation caveat:** the overlay sets no flags to hide itself, and no capture region is
 masked. Whether it appears inside single-app or full-display captures is a
@@ -35,24 +38,29 @@ physical-device finding per OEM — not verified in CI. See
 `docs/sprints/SPRINT_1C_APP_ONLY_CAPTURE.md` and rows 33–43 of
 `docs/TESTING_PHYSICAL_DEVICE.md`.
 
-## Freezing the game frame from the notification (Sprint 1B)
-The ongoing capture notification carries an action (**Freeze current frame**) implemented as
-an explicit `PendingIntent.getService` back to the running service — no Activity launch, no
-consent re-request, no second projection or VirtualDisplay. The service snapshots the latest
-validated frame into an independently owned copy (`FrameSnapshots`), keeps the projection
-valid, and re-posts the notification as FROZEN with **Resume live capture**. Images arriving
-while frozen are acquired and closed but not converted or published. The freeze can equally be
-triggered from the Vision Lab button; both run `CaptureFreeze.freezeCurrentFrame()`. After an
-Android-initiated stop the pinned frame survives in process memory for editing, but not
-process death.
+## Capture notification: Stop and Pause (Sprint 1C)
+The ongoing capture notification carries **Stop** and one state action — **Pause** while live,
+**Resume** when paused or frozen — implemented as explicit `PendingIntent.getService`s back to
+the running service — no Activity launch, no consent re-request, no second projection or
+VirtualDisplay. **Pause** maps onto the shared capture pause state (`CaptureStatus.PAUSED`):
+the pipeline stops converting/publishing (images are acquired and closed), the latest valid
+frame is preserved, MediaProjection and the VirtualDisplay keep running, and nothing replaces
+the paused frame. **Resume** clears any pinned frame (`CaptureFreeze.resumeLive()`) and clears
+the pause (`setPaused(false)`), returning to live publication. The notification shows exactly
+one of Pause/Resume plus Stop, reflects LIVE / PAUSED / FROZEN, and stays in sync with the
+floating overlay and the in-app controls through the same `CapturePublishState` derivation.
+Images arriving while frozen are acquired and closed but not converted or published. The
+in-app Freeze/Resume (pinning an independently owned snapshot via `CaptureFreeze` /
+`FrameSnapshots`) is unchanged. After an Android-initiated stop the pinned frame survives in
+process memory for editing, but not process death.
 
 ## Android version notes (compile/target SDK 35)
 - Android 13+ `POST_NOTIFICATIONS` may be denied; capture still proceeds with a valid ongoing
   foreground notification that Android may hide. In-app status and Stop control remain
-  available. The **Freeze current frame** notification action is not reachable while the
-  notification is hidden, so the app checks the permission (and requests it on Android 13+)
-  and says so on the capture screen; without it, freezing is done from the Vision Lab
-  (or with the notification enabled first).
+  available. The capture notification's **Stop** and **Pause** actions are not reachable while
+  the notification is hidden, so the app checks the permission (and requests it on Android 13+)
+  and says so on the capture screen; without it, pausing/freezing is done from the in-app
+  controls (or with the notification enabled first).
 - **Android 14+**: service calls `startForeground` with the `mediaProjection` type **before**
   `getMediaProjection()`; the consent token is single-session and dies with the service.
   `MediaProjection.Callback.onStop()` (revocation) and `onCapturedContentResize()` (rotation)

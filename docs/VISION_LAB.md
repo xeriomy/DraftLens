@@ -166,7 +166,7 @@ The button is a compact icon in the corner of the canvas card.
 
 | Control | What it does |
 |---|---|
-| **Freeze** | locks the current frame before annotation (also available as **Freeze current frame** in the capture notification while in another app) |
+| **Freeze** | locks the current frame before annotation (the capture notification carries **Pause**/**Resume** for the same job while in another app; an independently pinned snapshot comes from the floating button or this button) |
 | **Resume** | returns to live frames (also as **Resume live capture** in the notification) |
 | **Slot** | a manually marked region where a ban/pick hero portrait is expected |
 | **Process Frame** | resizes and prepares the frame only; no recognition exists yet |

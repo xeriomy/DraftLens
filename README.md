@@ -30,16 +30,16 @@ and [docs/VISION_TESTING.md](docs/VISION_TESTING.md).
 - Hero recognition v0 (Sprint 1B, PR #3): hero catalog sync from public static data,
   explicit Identify action for the selected slot, ranked candidates with similarity scores,
   manual confirm/correct — **accuracy on real game screens is not measured yet**
-- Freeze the game frame from the notification (Sprint 1B): tap **Freeze current frame** on the
-  capture notification while you are in MLBB — no need to leave the game; Vision Lab shows the
-  pinned game frame, not the DraftLens screen; **Resume live capture** from the notification or
-  in the Vision Lab
+- Capture notification with **Stop** and **Pause** (Sprint 1C): pausing keeps the latest
+  valid frame, blocks new frames replacing it, keeps MediaProjection running, and the same
+  Resume action recovers from pause or from a pinned frame; the notification reflects
+  LIVE / PAUSED / FROZEN and never shows both actions
 - App-only capture guidance (Sprint 1C): prefer **Single app / app window → Mobile Legends**
   (Android 14+ chooser); the captured window's visibility drives publication —
   MLBB hidden ⇒ the last valid game frame is kept, never DraftLens/shade/system UI;
   full-display capture remains the documented fallback (it may include the shade/system UI)
 - Circular floating freeze button (Sprint 1C): one 52dp circular `TYPE_APPLICATION_OVERLAY`
-  button shown only while capture runs — tap toggles LIVE (green) / FROZEN (orange),
+  button shown only while capture runs — tap toggles LIVE (green) / orange (paused or frozen),
   long-press-and-drag moves it, it snaps to a screen edge, position persists normalized in
   DataStore; notifications/in-app Freeze/Resume keep working without it; the overlay
   permission is requested only when you enable the button
@@ -70,11 +70,11 @@ build of record.** See `docs/VISION_TESTING.md` for exactly what ran.
 3. Tap **Start Capture** → grant the system screen-capture consent dialog. When Android asks
    what to capture, prefer **Single app / app window → Mobile Legends: Bang Bang** (Android 14+);
    if that option is missing, choose **Entire screen / full device display** (it can capture the
-   shade and system UI). See the in-app guide.
+   shade and system UI).
 4. Open Mobile Legends and wait for the draft screen you want to annotate.
-5. With MLBB on screen, tap the circular **Floating control** button (enable it on the capture
+5. With MLBB on screen, tap the circular **Floating freeze button** (enable it on the capture
    screen first) to freeze the frame — or, if you never granted the overlay permission, pull
-   down the notification shade and tap **Freeze current frame** (notifications must be enabled).
+   down the notification shade and tap **Pause** (notifications must be enabled).
 6. Switch back to **DraftLens → Vision Lab**. Capture kept running; the Vision Lab shows the
    pinned MLBB frame instead of the DraftLens screen.
 7. Draw a slot rectangle, then run **Identify hero** on the frozen frame. Candidates are

@@ -15,6 +15,7 @@ import com.draftlens.R
 /**
  * The one and only floating UI for Sprint 1C: a circular freeze/resume button.
  *
+ * Plain LIVE/FROZEN colors; no state is derived from incoming frames.
  * Gesture contract (deliberate, so game taps near a draft slot are never eaten):
  * - TAP (down+up inside the button, short): toggle freeze.
  * - Long-press (400 ms hold) arms drag mode; moving only after the hold drags.
@@ -70,12 +71,13 @@ class FloatingControlView(
         isFocusable = false
     }
 
-    fun setFrozen(frozen: Boolean) {
-        glyph.setImageResource(if (frozen) R.drawable.ic_floating_frozen else R.drawable.ic_floating_live)
+    /** LIVE (green) while publishing; orange while publication is paused or a frame is pinned. */
+    fun setNotLive(notLive: Boolean) {
+        glyph.setImageResource(if (notLive) R.drawable.ic_floating_frozen else R.drawable.ic_floating_live)
         val bg = background as GradientDrawable
-        bg.setColor(if (frozen) frozenColor else liveColor)
+        bg.setColor(if (notLive) frozenColor else liveColor)
         contentDescription = context.getString(
-            if (frozen) R.string.floating_control_frozen_description else R.string.floating_control_live_description,
+            if (notLive) R.string.floating_control_frozen_description else R.string.floating_control_live_description,
         )
     }
 

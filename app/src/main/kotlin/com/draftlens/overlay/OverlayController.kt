@@ -8,7 +8,14 @@ import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
 import com.draftlens.capture.CaptureFreeze
+import com.draftlens.capture.CapturePublishState
 import com.draftlens.capture.CaptureStateHolder
+import com.draftlens.capture.FreezeOutcome
+import com.draftlens.capture.FloatingTapOutcome
+import com.draftlens.capture.floatingTapFor
+import com.draftlens.capture.publishStateBlocksPublication
+import com.draftlens.capture.publishStateFor
+import com.draftlens.R
 import com.draftlens.datastore.AppPreferencesRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
@@ -17,8 +24,10 @@ import kotlinx.coroutines.launch
 /**
  * Owns the WindowManager side of the single circular floating control. Attached only while
  * a capture session is running (by [CaptureSessionService][com.draftlens.capture.CaptureSessionService]), always removed on teardown. Holds no
- * capture state of its own; the tap toggles the shared freeze path and the glyph follows
- * [CaptureStateHolder.frozenFrame].
+ * capture state of its own; the tap toggles the shared pause/freeze gate and the glyph follows
+ * the same [CapturePublishState][com.draftlens.capture.CapturePublishState] the capture notification shows.
+ * Rendering, touch handling and visibility are independent of the captured-frame pipeline:
+ * hiding the captured window never removes or pauses the button.
  *
  * The window is exactly button-sized and non-focusable: touches outside the circle go to
  * the app underneath, and the control never takes keyboard focus from the game.
@@ -99,7 +108,7 @@ class OverlayController(
             onDragMove = { rawX, rawY -> dragTo(rawX, rawY) },
             onDragEnd = { endDrag() },
         )
-        button.setFrozen(CaptureStateHolder.frozenFrame.value != null)
+        button.setNotLive(publishStateBlocksPublication(currentPublishStateForOverlay()))
 
         val params = WindowManager.LayoutParams(
             sizePx,
@@ -145,8 +154,8 @@ class OverlayController(
         }
     }
 
-    fun setFrozen(frozen: Boolean) {
-        mainHandler.post { view?.setFrozen(frozen) }
+    fun setNotLive(notLive: Boolean) {
+        mainHandler.post { view?.setNotLive(notLive) }
     }
 
     /** Removes the overlay. Safe from any thread and when not attached; invalidates pending attaches. */
@@ -214,13 +223,31 @@ class OverlayController(
         Log.i(TAG, "overlay snapped to ${snapped.edge} (normalized ${normalized.x}, ${normalized.y})")
     }
 
+    private fun currentPublishStateForOverlay(): CapturePublishState =
+        publishStateFor(pinInPlace = CaptureStateHolder.frozenFrame.value != null, isPaused = CaptureStateHolder.state.value.isPaused)
+
     private fun toggleFreeze() {
-        if (CaptureStateHolder.frozenFrame.value != null) {
-            CaptureFreeze.resumeLive()
-        } else {
-            CaptureFreeze.freezeCurrentFrame()
+        // Unified with the notification and in-app controls: resume if live publication is
+        // already blocked (pin or pause), otherwise freeze (pin). Never creates a session.
+        when (floatingTapFor(currentPublishStateForOverlay())) {
+            FloatingTapOutcome.RESUME -> {
+                CaptureFreeze.resumeLive()
+                CaptureStateHolder.setPaused(false)
+            }
+            FloatingTapOutcome.FREEZE -> {
+                val outcome = CaptureFreeze.freezeCurrentFrame()
+                if (outcome == FreezeOutcome.NoFrame) {
+                    showTransientMessage(context.getString(R.string.floating_control_no_frame_yet))
+                }
+            }
         }
-        // The service collects frozenFrame and repaints the glyph through setFrozen().
+        // The service collects the shared state and repaints the glyph through setNotLive().
+    }
+
+    private fun showTransientMessage(message: String) {
+        mainHandler.post {
+            android.widget.Toast.makeText(context.applicationContext, message, android.widget.Toast.LENGTH_SHORT).show()
+        }
     }
 
     private companion object {

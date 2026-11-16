@@ -386,6 +386,8 @@ review-fix pass and how it was verified.
 - **Part A — Freeze from the notification.** New `CaptureFreeze` bridge (service command +
   in-app button are one code path). The ongoing capture notification now exposes
   **Freeze current frame** (LIVE state) / **Resume live capture** (FROZEN state) plus
+  (superseded by the Sprint 1C follow-up: the notification now carries **Pause**/**Resume**)
+
   **Stop**. The command goes to the running service via an explicit, immutable
   `PendingIntent.getService` (`ACTION_FREEZE` / `ACTION_RESUME_LIVE`); it never launches an
   Activity, never re-promotes the service, never re-requests consent and never creates a
@@ -616,3 +618,44 @@ the matcher/Vision Lab are unaffected (this bug is in the capture pipeline only)
 - Resize during freeze is enforced by the pipeline's freeze gate (policy truth-table +
   `CaptureVisibilityPolicyTest`) and by on-device rows 25/30; no synthetic-pixel
   instrumented test exists — an ImageReader surface cannot be filled from a test Canvas.
+
+---
+
+# Sprint 1C — Follow-up fixes (notification Pause, permissions-only UI)
+
+**Branch:** `sprint-1c-app-only-capture` (stacked on PR #3, unmerged) · **PR:** #4
+
+## Root cause of the overlay misbehaving during app-only capture
+
+Full trace (callback → policy → pipeline → freeze → overlay) shows the overlay's lifecycle
+was never coupled to capture visibility — render, touch and window lifetime have no frame
+input. Three real defects were causing the observed "frozen" control:
+
+1. silent no-op tap on `NoFrame` in fresh app-only sessions (nothing published yet);
+2. overlay glyph and notification derived only from `frozenFrame`, so a non-pin publication
+   block (PAUSED) showed LIVE/green everywhere while publishing nothing;
+3. no single derivation for "is live publication happening" across surfaces.
+
+Fixed by: unified `CapturePublishState` (publishStateFor / publishActionFor /
+floatingTapFor) shared by notification and overlay; combined frozen-frame + session-state
+collector; toast feedback on `NoFrame`; OEM/immersive-game overlay coverage documented as a
+hardware finding (device rows 44–53, NOT RUN), with no masking or mode fallback shipped.
+
+## Notification: Freeze → Pause
+
+Stop + one state action: Pause (LIVE) / Resume (PAUSED or FROZEN). Pause maps onto the
+existing `CaptureStatus.PAUSED` pipeline gate — no second projection, no second state, latest
+valid frame preserved. Resume = `resumeLive()` + `setPaused(false)`.
+
+## UI cleanup
+
+General instructions removed: capture-mode tutorial card, floating-control tutorial card,
+in-game freeze help texts, stale Sprint-0 marker. Kept: notification permission (request,
+status, settings action) and overlay permission (request, status, settings action) in one
+compact card.
+
+## Verification
+
+- CI head / APK digest: see the PR #4 description (edited after each green run).
+- Instrumented tests: compiled via `assembleAndroidTest`; not executed (no KVM).
+- Physical device rows 44–53: **NOT RUN** — see `docs/TESTING_PHYSICAL_DEVICE.md`.

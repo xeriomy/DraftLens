@@ -33,10 +33,10 @@ Status values: **PASS**, **FAIL**, **PARTIAL**, **NOT RUN**. Record the commit S
 | 12 | DraftLens foreground vs MLBB foreground | Selected capture target is clear; preview corresponds to chosen scope | NOT RUN |
 | 13 | Screenshots in app | System screenshot path works normally | NOT RUN |
 | 14 | Full-device capture for the MLBB freeze workflow | When Android asks what to capture, **Entire screen / full device display** is chosen (fallback mode; preferred is Single app → MLBB — see rows 33–43); live preview shows MLBB content | NOT RUN |
-| 15 | Freeze from the notification while in MLBB | Tap **Freeze current frame** on the capture notification without leaving the game; the pinned frame survives returning to DraftLens; Vision Lab shows the MLBB frame, not the DraftLens UI | NOT RUN |
+| 15 | Pause from the notification while in MLBB | Tap **Pause** on the capture notification without leaving the game; the last valid frame is kept, publication stops, projection persists; the notification flips to Resume | NOT RUN |
 | 16 | Newer live frames cannot replace the frozen frame | While frozen, DraftLens keeps acquiring/closing images but publishes none; Vision Lab keeps showing the MLBB frame | NOT RUN |
 | 17 | Resume from Vision Lab and from the notification | **Resume** (Vision Lab) or **Resume live capture** (notification) reveals live frames without a new projection or VirtualDisplay; notification action flips back to LIVE | NOT RUN |
-| 18 | Freeze with no frame captured yet | **Freeze current frame** is a no-op (logged); nothing is pinned; no crash, no new session | NOT RUN |
+| 18 | Freeze with no frame captured yet (in-app / floating button) | **Freeze** is a no-op (logged); nothing is pinned; the tap surfaces a “No frame captured yet” toast; no crash, no new session | NOT RUN |
 | 19 | Duplicate taps of Freeze / Resume | Idempotent: the first pinned frame is kept; notification stays FROZEN | NOT RUN |
 | 20 | Notifications disabled | Freeze action unreachable from the shade; the app warns and offers to enable them; in-app Freeze/Resume still work | NOT RUN |
 | 21 | Stop with a frame frozen | Projection and resources are released; the frozen frame remains available in Vision Lab until Resume/Clear or a new capture session; it does not survive process death | NOT RUN |
@@ -62,6 +62,16 @@ Status values: **PASS**, **FAIL**, **PARTIAL**, **NOT RUN**. Record the commit S
 | 41 | Stop while frozen with overlay shown | Tap Stop with a frame pinned and the button visible: button disappears, projection released, the pinned frame survives in Vision Lab | NOT RUN |
 | 42 | Notification shade never replaces the pinned frame | In game with single-app MLBB capture, open the notification shade repeatedly: the pinned frame and live preview never show the shade | NOT RUN |
 | 43 | App hidden resume-intent | While frozen, return to DraftLens with MLBB in the background; tap Resume in DraftLens; return to MLBB: live capture is resumed (the hidden-period intent is remembered) | NOT RUN |
+| 44 | Overlay stays interactive over MLBB in app-only capture | Select Single app → MLBB; button stays visible above MLBB; taps toggle LIVE/FROZEN; long-press drag works; visibility changes (DraftLens ↔ MLBB, shade open/closed) never detach or stale it | NOT RUN |
+| 45 | Overlay tap before the first frame in app-only mode | Fresh session with the game not yet rendered: tap shows “No frame captured yet” toast; button stays attached and responsive | NOT RUN |
+| 46 | Overlay ↔ notification state sync | Freeze via overlay in MLBB: notification shows Resume (no Pause); pause via notification: overlay turns orange; both surface the same LIVE/PAUSED/FROZEN state | NOT RUN |
+| 47 | Notification actions while LIVE | Actions are exactly Stop + Pause; no “Freeze current frame” wording remains anywhere in the notification | NOT RUN |
+| 48 | Notification Pause keeps the frame | Tap Pause in MLBB: latest game frame stays shown everywhere; no new frames replace it; projection and VirtualDisplay persist; notification flips to Resume | NOT RUN |
+| 49 | Notification Resume recovers | Tap Resume: live frames resume without a new consent dialog or VirtualDisplay; notification flips back to Stop + Pause | NOT RUN |
+| 50 | Notification Resume while pinned in-app | Freeze via the in-app control, then Resume from the notification: pin clears and live publication resumes (gate opens unless MLBB is hidden) | NOT RUN |
+| 51 | Stop from the notification | Stop is always present; removes the overlay, releases projection/VirtualDisplay/notification; Vision Lab retains the pinned frame | NOT RUN |
+| 52 | Pause then process restart | Pause during MLBB; kill the app from recents; reopen: capture is gone (process death), no stale PAUSED state carried into the next session | NOT RUN |
+| 53 | Single-app capture of another app | Repeat rows 44–51 with a second single-app target to confirm no MLBB-specific assumptions | NOT RUN |
 
 ## Sprint 1C capture-isolation finding (maintainer to fill in)
 

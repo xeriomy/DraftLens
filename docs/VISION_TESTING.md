@@ -162,7 +162,7 @@ and the `mediaProjection` service type survived the build.
 - **Catalog entries actually loaded** are measured at device sync time; not recorded here.
 - Compose screens are not UI-tested (no compose-ui-test dependency exists in this project);
   the interaction model is covered by the interaction state-machine tests.
-- The service-level notification action (`ACTION_FREEZE` delivery through
+- The service-level notification actions (`ACTION_PAUSE` / `ACTION_RESUME_LIVE` delivery through
   `onStartCommand`) is exercised only through the JVM-level `CaptureFreeze`/`CaptureStateHolder`
   paths and manual device verification; no instrumented test taps the system notification.
 

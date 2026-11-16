@@ -109,3 +109,59 @@ Android toolchain.
 No draft-phase detection, no slot detection, no hero models, no counter/synergy scoring,
 no recommendation ranking or overlays, no game memory access, no automated interaction
 with MLBB, no accessibility service, no panel/menu/toolbar from the overlay button.
+
+## Follow-up fixes (notification Pause, permissions-only UI, overlay independence)
+
+### Root cause analysis (overlay "freezing" during app-only capture)
+
+Traced end to end: `MediaProjection.Callback` → `onCapturedContentVisibilityChanged` →
+`CaptureVisibilityPolicy` → `FramePipeline` → `CaptureFreeze` → overlay/notification state.
+
+What the trace showed:
+
+1. **The overlay was never lifecycle-coupled to capture visibility** — `FloatingControlView`
+   renders and handles touches with no frame input; `onCapturedContentVisibilityChanged`
+   gates only the `FramePipeline` (by design after the 1C review fixes). Window attachment
+   is independent of the ImageReader generation and of the sampler.
+2. **Three real defects made the button misbehave though:**
+   - **Silent no-op tap**: tapping freeze before any frame had ever been published returned
+     `NoFrame` and produced no feedback (common in app-only mode, where nothing publishes
+     until MLBB is first on screen). The tap now surfaces a short toast ("No frame captured
+     yet"), and the button is no longer perceived as dead.
+   - **Glyph/notification could disagree with reality**: the overlay glyph and the
+     notification only followed `frozenFrame`. Any publication block that was not a pin
+     (e.g. notification Pause) left both surfaces showing LIVE/green while publication was
+     blocked. Both now derive from one shared `CapturePublishState` (LIVE/PAUSED/FROZEN,
+     pin wins over pause for presentation) — see `CapturePublishState.kt` — collected from a
+     combined `frozenFrame` + session-state flow.
+   - **Visual workaround risk ruled out**: nothing in the fix hides the button, masks
+     regions, or falls back to full-display capture.
+3. **Unverifiable from CI**: whether a specific OEM/immersive game covers or excludes the
+   overlay window on the physical screen is a hardware finding — rows 44–53 of
+   `docs/TESTING_PHYSICAL_DEVICE.md` (all NOT RUN). No OEM workaround is shipped; if an
+   OEM covers overlays during immersive games, that is a documented limitation, not a code
+   defect, and the notification Stop/Pause actions remain available.
+
+### Notification: Freeze → Pause
+
+The ongoing notification now carries **Stop** and exactly one of **Pause** (while LIVE) /
+**Resume** (while PAUSED or FROZEN) — never both, never a Freeze action. Pause maps onto the
+existing shared `CaptureStatus.PAUSED` gate (`setPaused(true)` stops conversion/publication,
+keeps the projection, VirtualDisplay and latest valid frame). Resume is a unified handler:
+`CaptureFreeze.resumeLive()` (clear any pin) + `setPaused(false)` (clear any pause). The
+in-app and overlay Freeze/Resume (pinning a snapshot) are unchanged.
+
+### Permissions-only UI
+
+Removed: the two-mode capture tutorial card, the floating-control tutorial card, the
+in-game freeze help text, and the stale "Detection: not implemented in Sprint 0" line.
+Kept, compacted in one "Permissions" card: the notification permission flow (status
+Allowed/Not allowed + grant action), and the floating-overlay permission flow (status,
+switch, open Android overlay settings, pending-enable on return from settings). The
+in-app capture controls (Start/Stop/Pause), status readout, sampling interval and live
+preview are unchanged.
+
+### Verification
+
+- CI head / results: see the PR #4 description (edited after each green run).
+- Physical device: rows 44–53 remain **NOT RUN**.

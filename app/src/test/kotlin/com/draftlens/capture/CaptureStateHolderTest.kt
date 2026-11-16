@@ -227,6 +227,33 @@ class CaptureStateHolderTest {
         assertNull(CaptureStateHolder.latestFrame.value)
     }
 
+    @Test fun `pausing never clears the last valid frame or a pinned snapshot`() {
+        CaptureStateHolder.beginCapture(1080, 2400, 440)
+        val frame = testCapturedFrame()
+        CaptureStateHolder.recordFrame(frame)
+        CaptureStateHolder.setFrozenFrame(frame)
+
+        CaptureStateHolder.setPaused(true)
+
+        assertEquals(CaptureStatus.PAUSED, CaptureStateHolder.state.value.status)
+        assertEquals("pause must preserve the paused frame reference", frame, CaptureStateHolder.latestFrame.value)
+        assertEquals("pause must preserve the pinned snapshot", frame, CaptureStateHolder.frozenFrame.value)
+    }
+
+    @Test fun `resume from paused returns to capturing with the pin intact`() {
+        CaptureStateHolder.beginCapture(1080, 2400, 440)
+        val frame = testCapturedFrame()
+        CaptureStateHolder.recordFrame(frame)
+        CaptureStateHolder.setFrozenFrame(frame)
+        CaptureStateHolder.setPaused(true)
+
+        CaptureStateHolder.setPaused(false)
+
+        assertEquals(CaptureStatus.CAPTURING, CaptureStateHolder.state.value.status)
+        assertEquals(frame, CaptureStateHolder.frozenFrame.value)
+        assertEquals(frame, CaptureStateHolder.latestFrame.value)
+    }
+
     @Test fun `a frozen frame survives a capture stop`() {
         CaptureStateHolder.beginCapture(1080, 2400, 440)
         val frozen = testCapturedFrame()

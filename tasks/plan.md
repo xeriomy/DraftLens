@@ -142,7 +142,7 @@ reference-loader ownership) and wire the freeze workflow through the capture arc
 No recommendation features, no overlays, no automation, PR stays draft and unmerged.
 
 ### Work items in order
-- [x] Freeze a game frame from the notification (`CaptureFreeze`, `ACTION_FREEZE` /
+- [x] Freeze a game frame from the notification (`CaptureFreeze`, `ACTION_FREEZE` (superseded: notification now issues Pause) /
       `ACTION_RESUME_LIVE`, `FramePipeline` freeze gate, independently owned snapshot via
       `FrameSnapshots`, FROZEN notification with Resume action, in-app Resume unchanged)
 - [x] Full-device-capture guidance; POST_NOTIFICATIONS handling; freeze actions in the
@@ -212,3 +212,21 @@ Sprint 1B history intact.
 - [x] JVM sequence tests: hidden→freeze→resume→visible; explicit freeze blocks auto-resume
 - [ ] CI green record, APK digest, device rows 33–43 NOT RUN (maintainer)
 - [ ] PR #4 description + report; physical-device acceptance checklist is maintainer-run
+
+## Sprint 1C — Follow-up fixes (this revision)
+Objective: make the floating control robust for app-only capture and slim the in-app UI to
+permissions only; replace the notification Freeze action with Pause/Resume on the shared state.
+
+### Work items
+- [x] Root-cause pass on the app-only overlay: no visibility↔overlay lifecycle coupling found;
+      fixes are the silent-tap feedback (toast on NoFrame) and a single `CapturePublishState`
+      derivation shared by notification and overlay (pin wins over pause for presentation)
+- [x] Unified `CapturePublishState` (LIVE/PAUSED/FROZEN) with JVM-tested decision matrix
+- [x] Notification actions: Stop + Pause (LIVE) / Stop + Resume (PAUSED/FROZEN); Pause maps to
+      the existing CaptureStatus.PAUSED gate; Resume clears pin + pause; combined
+      frozen-frame + session-state collector keeps notification and overlay in sync
+- [x] UI slim-down: removed tutorial cards / in-game help texts; one compact Permissions card
+      (notification permission + overlay permission, status + grant/settings actions)
+- [x] Tests: PublishStateMatrixTest, holder pause-preservation tests, sequence pause test,
+      instrumented overlay publication-flip attach test
+- [ ] CI green record; physical-device rows 44–53 NOT RUN

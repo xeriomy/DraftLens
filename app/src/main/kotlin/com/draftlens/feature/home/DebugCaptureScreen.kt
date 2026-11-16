@@ -38,7 +38,6 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.draftlens.capture.CaptureController
-import com.draftlens.capture.CaptureStateHolder
 import com.draftlens.datastore.AppPreferencesRepository
 import com.draftlens.models.CaptureStatus
 import android.content.Intent
@@ -96,10 +95,11 @@ fun DebugCaptureScreen(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("DraftLens — Capture Debug (Sprint 0)", color = Color.White, style = MaterialTheme.typography.titleLarge)
-        Text("Detection: Not implemented in Sprint 0", color = Color.Gray)
+        Text("DraftLens — Capture", color = Color.White, style = MaterialTheme.typography.titleLarge)
 
-        MobileLegendsCaptureGuide(
+        PermissionsCard(
+            activity = activity,
+            preferences = preferences,
             notificationsEnabled = notificationsEnabled,
             onEnableNotifications = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -113,8 +113,6 @@ fun DebugCaptureScreen(
                 }
             },
         )
-
-        FloatingControlCard(activity = activity, preferences = preferences)
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -202,72 +200,17 @@ fun DebugCaptureScreen(
     }
 }
 
-/** Guidance for capturing Mobile Legends with the two system capture modes. */
+/**
+ * The only two permissions DraftLens needs beyond the screen-capture consent: notifications
+ * (the capture notification carries Stop + Pause) and the overlay permission (the floating
+ * freeze button). Both show clear granted/denied status and a grant/open-settings action.
+ */
 @Composable
-private fun MobileLegendsCaptureGuide(
-    notificationsEnabled: Boolean,
-    onEnableNotifications: () -> Unit,
-) {
-    val body = MaterialTheme.typography.bodySmall
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text("Capturing Mobile Legends: Bang Bang", style = MaterialTheme.typography.titleMedium)
-            Text("1. Tap Start Capture.", style = body)
-            Text(
-                "2. When Android asks what to share, prefer Single app / app window and " +
-                    "choose Mobile Legends: Bang Bang (Android 14+ partial capture). DraftLens then " +
-                    "only sees the game: live frames while MLBB is on screen, and the last valid " +
-                    "game frame whenever MLBB is hidden — never the shade, DraftLens or the system UI.",
-                style = body,
-            )
-            Text(
-                "   Not offered on your Android? Choose Entire screen / full device display. That " +
-                    "fallback captures everything on the display — including the notification shade, " +
-                    "system UI and other apps. DraftLens cannot promise notification-free frames on " +
-                    "this path; the in-app guidance and freeze behavior stay the same.",
-                style = body,
-            )
-            Text(
-                "3. Open Mobile Legends and wait for the draft screen.",
-                style = body,
-            )
-            Text(
-                "4. While in the game, tap the circular DraftLens button (enable it in " +
-                    "“Floating control” below) to freeze the game frame — tap again to resume. " +
-                    "Long-press and drag to move it; it snaps to a screen edge.",
-                style = body,
-            )
-            Text(
-                "   Prefer not to grant the overlay permission? Capture still works: tap “Freeze " +
-                    "current frame” on the capture notification (needs notifications enabled), or " +
-                    "use Freeze/Resume inside DraftLens.",
-                style = body,
-            )
-            Text(
-                "5. Return to DraftLens. Vision Lab shows the pinned game frame. Resume there, or " +
-                    "tap the circle again in the game.",
-                style = body,
-            )
-            if (!notificationsEnabled) {
-                Text(
-                    "Notifications are disabled: the “Freeze current frame” notification action is not reachable, but the floating control and in-app Freeze/Resume still work.",
-                    style = body,
-                    color = MaterialTheme.colorScheme.error,
-                )
-                TextButton(onClick = onEnableNotifications) { Text("Enable notifications") }
-            }
-        }
-    }
-}
-
-/** The one Sprint 1C overlay: a circular freeze/resume button, opt-in via the toggle. */
-@Composable
-private fun FloatingControlCard(
+private fun PermissionsCard(
     activity: Activity,
     preferences: AppPreferencesRepository,
+    notificationsEnabled: Boolean,
+    onEnableNotifications: () -> Unit,
 ) {
     val body = MaterialTheme.typography.bodySmall
     var overlayGranted by remember { mutableStateOf(Settings.canDrawOverlays(activity)) }
@@ -276,7 +219,6 @@ private fun FloatingControlCard(
         preferences.floatingControlEnabled.catch { emit(false) }
     }
     val floatingEnabled by floatingEnabledFlow.collectAsState(initial = false)
-    val frozen by CaptureStateHolder.frozenFrame.collectAsState()
     val scope = rememberCoroutineScope()
 
     // Returning from the Android overlay-permission settings screen resolves a pending enable exactly once.
@@ -296,21 +238,45 @@ private fun FloatingControlCard(
     }
 
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // --- Notifications ---
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Floating control", style = MaterialTheme.typography.titleMedium)
+                    Text("Notifications", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "One circular button shown while capture is running. Tap toggles Freeze/Resume; " +
-                            "long-press and drag to move it — it snaps to a screen edge. " +
-                            "Green = live, orange = frozen. It never opens a panel.",
+                        "Needed for the capture notification’s Stop and Pause actions while you are in the game.",
                         style = body,
+                    )
+                    Text(
+                        if (notificationsEnabled) "Status: Allowed" else "Status: Not allowed",
+                        style = body,
+                        color = if (notificationsEnabled) Color(0xFF7DDCA0) else MaterialTheme.colorScheme.error,
+                    )
+                }
+                if (!notificationsEnabled) {
+                    TextButton(onClick = onEnableNotifications) { Text("Enable") }
+                }
+            }
+
+            // --- Floating overlay button ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Floating freeze button", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Needed to freeze/resume the game frame from a small button while in MLBB. " +
+                            "Capture works fully without it.",
+                        style = body,
+                    )
+                    Text(
+                        if (overlayGranted) "Status: Allowed" else "Status: Not allowed",
+                        style = body,
+                        color = if (overlayGranted) Color(0xFF7DDCA0) else MaterialTheme.colorScheme.error,
                     )
                 }
                 Switch(
@@ -341,21 +307,14 @@ private fun FloatingControlCard(
                     },
                 )
             }
-            when {
-                !overlayGranted -> Text(
-                    "Android has not allowed drawing over other apps. Capture and the in-app " +
-                        "Freeze/Resume keep working; grant the permission here and the button " +
-                        "appears during capture.",
-                    style = body,
-                    color = MaterialTheme.colorScheme.error,
-                )
-
-                floatingEnabled -> Text(
-                    "Shown while capture is running. State: ${if (frozen != null) "FROZEN (orange)" else "LIVE (green)"}.",
-                    style = body,
-                )
-
-                else -> Text("Hidden. Toggle on to show it during capture.", style = body)
+            if (!overlayGranted) {
+                TextButton(onClick = {
+                    pendingEnable = true
+                    activity.startActivity(
+                        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                            .setData(Uri.parse("package:${activity.packageName}")),
+                    )
+                }) { Text("Open Android overlay settings") }
             }
         }
     }

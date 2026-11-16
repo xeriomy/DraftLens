@@ -6,10 +6,12 @@
     <string name="capture_stop_action">Stop</string>
     <string name="capture_live_subtext">LIVE</string>
     <string name="capture_frozen_subtext">FROZEN</string>
+    <string name="capture_paused_subtext">PAUSED</string>
     <string name="capture_notification_frozen_text">Frame frozen — the Vision Lab shows the pinned frame</string>
-    <string name="capture_freeze_action">Freeze current frame</string>
-    <string name="capture_resume_capture_action">Resume live capture</string>
-    <string name="detection_not_implemented">Not implemented in Sprint 0</string>
+    <string name="capture_notification_paused_text">Capture paused — the last game frame is kept</string>
+    <string name="capture_pause_action">Pause</string>
+    <string name="capture_resume_capture_action">Resume</string>
     <string name="floating_control_live_description">Freeze the game frame</string>
     <string name="floating_control_frozen_description">Resume live capture</string>
+    <string name="floating_control_no_frame_yet">No frame captured yet — open Mobile Legends first</string>
 </resources>

@@ -137,3 +137,11 @@ PASS** (device details not supplied). The MediaProjection lifecycle matrix is **
 - [x] Task 9: Documentation (sprint doc, capture docs, device matrix rows 33–43) (this branch)
 - [x] Task 10: CI green record (run 43784157138 at `f992d45`: 886 unit tests, 0 failures; APK sha256 `1d1f…`; stacked PR #4); review findings M1/M2 fixed
 Verification runs in GitHub Actions because the authoring host has no Android toolchain (below). Physical-device rows 33–43 are **NOT RUN**.
+
+## Sprint 1C follow-up: notification Pause, permissions-only UI, overlay independence
+- [x] Root-cause trace + CapturePublishState unification (`CapturePublishState.kt`)
+- [x] Notification Freeze → Pause (LIVE → Pause, PAUSED/FROZEN → Resume); combined state collector
+- [x] Overlay glyph/tap driven by the shared publish state; toast on NoFrame
+- [x] Permissions-only UI (notification + overlay); tutorial and help text removed
+- [x] Docs sync + device rows 44–53; tests added (JVM + compile-only instrumented)
+- [ ] Task 10: CI green record + APK digest; report

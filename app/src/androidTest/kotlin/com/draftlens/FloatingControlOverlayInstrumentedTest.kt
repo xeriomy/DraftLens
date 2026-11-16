@@ -102,6 +102,25 @@ class FloatingControlOverlayInstrumentedTest {
         prefs.setFloatingPosition(com.draftlens.overlay.OverlayPosition.Normalized(1f, 0.18f))
     }
 
+    @Test fun overlaySurvivesPublicationStateFlips() {
+        assumeTrue(
+            "overlay appop not granted on this device; see class comment",
+            Settings.canDrawOverlays(context),
+        )
+        runBlocking { preferences.setFloatingControlEnabled(true) }
+
+        val created = OverlayController(context, preferences, scope)
+        controller = created
+        created.show(1080, 2400)
+        assertTrue("overlay did not attach within 5s", waitUntil { created.isAttached })
+
+        // Publication-state changes (freeze/resume/pause/visibility gates) must never detach it.
+        created.setNotLive(true)
+        created.setNotLive(false)
+
+        assertTrue("overlay must stay attached across publication-state flips", created.isAttached)
+    }
+
     private fun waitUntil(timeoutMs: Long = 5_000, condition: () -> Boolean): Boolean {
         val deadline = SystemClock.elapsedRealtime() + timeoutMs
         while (SystemClock.elapsedRealtime() < deadline) {

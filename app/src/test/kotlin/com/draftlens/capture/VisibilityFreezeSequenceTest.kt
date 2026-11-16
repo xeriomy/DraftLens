@@ -49,6 +49,19 @@ class VisibilityFreezeSequenceTest {
         assertFalse(policy.shouldPublish(isActive = true, generationCurrent = true, frozen = true))
     }
 
+    @Test fun `a paused capture publishes nothing even when the window is visible`() {
+        CaptureStateHolder.beginCapture(1080, 2400, 440)
+        CaptureStateHolder.recordFrame(testCapturedFrame())
+        policy.onContentVisibilityChanged(true)
+        CaptureStateHolder.setPaused(true)
+
+        // isActive() is false while PAUSED; publication stays blocked while the window is visible.
+        assertFalse(policy.shouldPublish(isActive = false, generationCurrent = true, frozen = false))
+
+        CaptureStateHolder.setPaused(false)
+        assertTrue(policy.shouldPublish(isActive = true, generationCurrent = true, frozen = false))
+    }
+
     @Test fun `an explicitly frozen session does not auto-resume on visibility`() {
         CaptureStateHolder.beginCapture(1080, 2400, 440)
         val frame = testCapturedFrame()

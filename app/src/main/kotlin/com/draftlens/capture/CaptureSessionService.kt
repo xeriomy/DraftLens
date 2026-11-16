@@ -28,6 +28,8 @@ import com.draftlens.models.CaptureStatus
 import com.draftlens.overlay.OverlayController
 import com.draftlens.overlay.OverlayEnablement
 import com.draftlens.vision.model.FrameRotation
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -59,7 +61,7 @@ class CaptureSessionService : Service() {
     private var displayListener: DisplayManager.DisplayListener? = null
     private var captureJob: Job? = null
     private var frameJob: Job? = null
-    private var frozenJob: Job? = null
+    private var publishedStateJob: Job? = null
     private var foregroundPromoted = false
     /** Non-null only while the floating control may be attached (user-enabled + permitted + capturing). */
     private var overlayController: OverlayController? = null
@@ -156,29 +158,10 @@ class CaptureSessionService : Service() {
                 CaptureStateHolder.setPaused(false)
                 START_NOT_STICKY
             }
-            ACTION_FREEZE -> {
-                // Never re-promotes, never restarts MediaProjection: no-op without an active pipeline.
-                if (!CaptureFreeze.hasActivePipeline()) {
-                    Log.i(TAG, "Freeze command ignored: no active capture session")
-                    stopSelf() // do not linger for a stale command
-                    return START_NOT_STICKY
-                }
-                when (val outcome = CaptureFreeze.freezeCurrentFrame()) {
-                    is FreezeOutcome.Frozen ->
-                        Log.i(TAG, "Freeze command honoured (${outcome.frame.width}x${outcome.frame.height})")
-                    FreezeOutcome.AlreadyFrozen ->
-                        Log.i(TAG, "Freeze command: a frame is already frozen; keeping it")
-                    FreezeOutcome.NoFrame ->
-                        Log.i(TAG, "Freeze command ignored: no frame captured yet")
-                    FreezeOutcome.NoPipeline -> {
-                        Log.i(TAG, "Freeze command ignored: no active capture session")
-                        stopSelf() // do not linger for a stale command
-                    }
-                }
-                START_NOT_STICKY
-            }
             ACTION_RESUME_LIVE -> {
+                // Unified resume: clears any pinned frame AND any pause. Safe in either state.
                 CaptureFreeze.resumeLive()
+                CaptureStateHolder.setPaused(false)
                 if (CaptureStateHolder.state.value.status != CaptureStatus.CAPTURING &&
                     CaptureStateHolder.state.value.status != CaptureStatus.PAUSED
                 ) {
@@ -325,7 +308,7 @@ class CaptureSessionService : Service() {
         }
 
         createNotificationChannel()
-        val notification = buildNotification()
+        val notification = buildNotification(currentPublishState())
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ServiceCompat.startForeground(
@@ -360,12 +343,18 @@ class CaptureSessionService : Service() {
                 }
             }
         }
-        frozenJob?.cancel()
-        frozenJob = scope.launch {
-            CaptureStateHolder.frozenFrame.collectLatest { frozen ->
-                updateNotificationState(frozen != null)
-                overlayController?.setFrozen(frozen != null)
-            }
+        publishedStateJob?.cancel()
+        publishedStateJob = scope.launch {
+            combine(
+                CaptureStateHolder.frozenFrame,
+                CaptureStateHolder.state,
+            ) { pin, st -> publishStateFor(pinInPlace = pin != null, isPaused = st.isPaused) }
+                .distinctUntilChanged()
+
+                .collectLatest { publishState ->
+                    updateNotificationState(publishState)
+                    overlayController?.setNotLive(publishStateBlocksPublication(publishState))
+                }
         }
     }
 
@@ -529,13 +518,13 @@ class CaptureSessionService : Service() {
         // The overlay goes first: after stop the control has nothing to toggle and must never linger.
         overlayController?.detach()
         overlayController = null
-        Log.i(TAG, "session=$sessionCounter release: captureJob/frameJob/frozenJob cancelled=${captureJob != null || frameJob != null || frozenJob != null}")
+        Log.i(TAG, "session=$sessionCounter release: captureJob/frameJob/publishedStateJob cancelled=${captureJob != null || frameJob != null || publishedStateJob != null}")
         captureJob?.cancel()
         captureJob = null
         frameJob?.cancel()
         frameJob = null
-        frozenJob?.cancel()
-        frozenJob = null
+        publishedStateJob?.cancel()
+        publishedStateJob = null
         try { virtualDisplay?.release() } catch (e: Exception) { Log.w(TAG, "session=$sessionCounter VirtualDisplay release failed", e) }
         if (virtualDisplay != null) Log.i(TAG, "session=$sessionCounter virtual-display released")
         virtualDisplay = null
@@ -597,8 +586,11 @@ class CaptureSessionService : Service() {
             .createNotificationChannel(channel)
     }
 
-    /** Re-posts the ongoing notification with the current LIVE/FROZEN state and its action. */
-    private fun updateNotificationState(frozen: Boolean) {
+    private fun currentPublishState(): CapturePublishState =
+        publishStateFor(pinInPlace = CaptureStateHolder.frozenFrame.value != null, isPaused = CaptureStateHolder.state.value.isPaused)
+
+    /** Re-posts the ongoing notification with the current LIVE/PAUSED/FROZEN state and its actions. */
+    private fun updateNotificationState(publishState: CapturePublishState) {
         if (!foregroundPromoted) {
             Log.d(TAG, "Skipping notification update: service is not promoted")
             return
@@ -609,7 +601,7 @@ class CaptureSessionService : Service() {
         }
         try {
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-                .notify(NOTIFICATION_ID, buildNotification(frozen))
+                .notify(NOTIFICATION_ID, buildNotification(publishState))
         } catch (e: Exception) {
             Log.w(TAG, "Failed to update the capture notification", e)
         }
@@ -621,7 +613,7 @@ class CaptureSessionService : Service() {
             .areNotificationsEnabled()
     }.getOrDefault(true)
 
-    private fun buildNotification(frozen: Boolean = CaptureStateHolder.frozenFrame.value != null): Notification {
+    private fun buildNotification(publishState: CapturePublishState): Notification {
         val tapIntent = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java),
@@ -632,18 +624,26 @@ class CaptureSessionService : Service() {
             Intent(this, CaptureSessionService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val freezeIntent = PendingIntent.getService(
+        val pauseIntent = PendingIntent.getService(
             this, 2,
-            Intent(this, CaptureSessionService::class.java).setAction(ACTION_FREEZE),
+            Intent(this, CaptureSessionService::class.java).setAction(ACTION_PAUSE),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val resumeCaptureIntent = PendingIntent.getService(
+        val resumeIntent = PendingIntent.getService(
             this, 3,
             Intent(this, CaptureSessionService::class.java).setAction(ACTION_RESUME_LIVE),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val subText = if (frozen) getString(R.string.capture_frozen_subtext) else getString(R.string.capture_live_subtext)
-        val text = if (frozen) getString(R.string.capture_notification_frozen_text) else getString(R.string.capture_notification_text)
+        val subText = when (publishState) {
+            CapturePublishState.LIVE -> getString(R.string.capture_live_subtext)
+            CapturePublishState.PAUSED -> getString(R.string.capture_paused_subtext)
+            CapturePublishState.FROZEN -> getString(R.string.capture_frozen_subtext)
+        }
+        val text = when (publishState) {
+            CapturePublishState.LIVE -> getString(R.string.capture_notification_text)
+            CapturePublishState.PAUSED -> getString(R.string.capture_notification_paused_text)
+            CapturePublishState.FROZEN -> getString(R.string.capture_notification_frozen_text)
+        }
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.capture_notification_title))
             .setContentText(text)
@@ -652,10 +652,12 @@ class CaptureSessionService : Service() {
             .setContentIntent(tapIntent)
             .setOngoing(true)
             .setShowWhen(false)
-        if (frozen) {
-            builder.addAction(android.R.drawable.ic_media_play, getString(R.string.capture_resume_capture_action), resumeCaptureIntent)
-        } else {
-            builder.addAction(android.R.drawable.ic_menu_camera, getString(R.string.capture_freeze_action), freezeIntent)
+        // Exactly one of Pause/Resume — never both, never a stale Freeze action.
+        when (publishActionFor(publishState)) {
+            CapturePublishAction.PAUSE ->
+                builder.addAction(android.R.drawable.ic_media_pause, getString(R.string.capture_pause_action), pauseIntent)
+            CapturePublishAction.RESUME ->
+                builder.addAction(android.R.drawable.ic_media_play, getString(R.string.capture_resume_capture_action), resumeIntent)
         }
         return builder
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.capture_stop_action), stopIntent)
@@ -667,7 +669,6 @@ class CaptureSessionService : Service() {
         const val ACTION_STOP = "com.draftlens.action.STOP_CAPTURE"
         const val ACTION_PAUSE = "com.draftlens.action.PAUSE_CAPTURE"
         const val ACTION_RESUME = "com.draftlens.action.RESUME_CAPTURE"
-        const val ACTION_FREEZE = "com.draftlens.action.FREEZE_CAPTURE"
         const val ACTION_RESUME_LIVE = "com.draftlens.action.RESUME_LIVE_CAPTURE"
         const val ACTION_OVERLAY_UPDATE = "com.draftlens.action.OVERLAY_UPDATE"
         const val EXTRA_RESULT_CODE = "extra_result_code"
