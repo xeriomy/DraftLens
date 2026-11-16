@@ -35,6 +35,13 @@ class OverlayController(
     private var layoutParams: WindowManager.LayoutParams? = null
     private val sizePx = (context.resources.displayMetrics.density * SIZE_DP).toInt()
 
+    /** Current display size; updated on rotation so drag/snap math never uses stale metrics. */
+    @Volatile
+    private var screenWidthPx = 0
+
+    @Volatile
+    private var screenHeightPx = 0
+
     @Volatile
     private var currentNormalized = OverlayPosition.Normalized(x = 1f, y = DEFAULT_Y_FRACTION)
 
@@ -66,14 +73,16 @@ class OverlayController(
 
     private fun attachView(screenWidthPx: Int, screenHeightPx: Int, normalized: OverlayPosition.Normalized) {
         if (view != null) return // a configure change raced the show() coroutine
+        this.screenWidthPx = screenWidthPx
+        this.screenHeightPx = screenHeightPx
 
         val px = OverlayPosition.normalizedToPixels(normalized, screenWidthPx, screenHeightPx, sizePx)
         val button = FloatingControlView(
             context,
             onTap = { toggleFreeze() },
             onDragStart = { rawX, rawY -> beginDrag(rawX, rawY) },
-            onDragMove = { rawX, rawY -> dragTo(rawX, rawY, screenWidthPx, screenHeightPx) },
-            onDragEnd = { endDrag(screenWidthPx, screenHeightPx) },
+            onDragMove = { rawX, rawY -> dragTo(rawX, rawY) },
+            onDragEnd = { endDrag() },
         )
         button.setFrozen(CaptureStateHolder.frozenFrame.value != null)
 
@@ -105,6 +114,8 @@ class OverlayController(
 
     /** Re-derives the pixel position from the normalized one after a resize/rotation. */
     fun onDisplayMetricsChanged(screenWidthPx: Int, screenHeightPx: Int) {
+        this.screenWidthPx = screenWidthPx
+        this.screenHeightPx = screenHeightPx
         val params = layoutParams ?: return
         val button = view ?: return
         val px = OverlayPosition.normalizedToPixels(currentNormalized, screenWidthPx, screenHeightPx, sizePx)
@@ -151,7 +162,7 @@ class OverlayController(
         grabOffsetY = rawY - params.y
     }
 
-    private fun dragTo(rawX: Float, rawY: Float, screenWidthPx: Int, screenHeightPx: Int) {
+    private fun dragTo(rawX: Float, rawY: Float) {
         val params = layoutParams ?: return
         val button = view ?: return
         val clamped = OverlayPosition.clampToScreen(
@@ -166,7 +177,7 @@ class OverlayController(
         runCatching { windowManager.updateViewLayout(button, params) }
     }
 
-    private fun endDrag(screenWidthPx: Int, screenHeightPx: Int) {
+    private fun endDrag() {
         val params = layoutParams ?: return
         val button = view ?: return
         val snapped = OverlayPosition.snapToNearestEdge(params.x, params.y, screenWidthPx, screenHeightPx, sizePx)
